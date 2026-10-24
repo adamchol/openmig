@@ -43,6 +43,7 @@ pub fn spec() -> SchemaSpec {
     SchemaSpec {
         blocks: BLOCKS,
         default_namespace: "public".to_owned(),
+        implicit: Vec::new(),
     }
 }
 

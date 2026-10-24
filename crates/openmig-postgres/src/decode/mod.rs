@@ -223,6 +223,16 @@ impl<'a> Decoder<'a> {
 
     fn collect_symbols(&mut self) {
         let doc = self.doc;
+        for schema in ["public", self.settings.default_schema.as_str()] {
+            self.symbols.insert(
+                Address::new("schema", vec![schema.to_owned()]),
+                Symbol {
+                    schema: String::new(),
+                    name: schema.to_owned(),
+                    signature: None,
+                },
+            );
+        }
         for block in &doc.blocks {
             let Some(address) = &block.address else {
                 continue;

@@ -60,6 +60,7 @@ fn reload(blocks: &[WBlock]) -> (String, Vec<Block>) {
     let spec = SchemaSpec {
         blocks: BLOCKS,
         default_namespace: "public".to_owned(),
+        implicit: Vec::new(),
     };
     let opts = LoadOptions {
         spec: &spec,

@@ -61,6 +61,9 @@ pub struct SchemaSpec {
     pub blocks: &'static [BlockSpec],
     /// Namespace given to `Qualified` labels without a dot (`public`, `default`).
     pub default_namespace: String,
+    /// Referenceable blocks that exist even when no file declares them, e.g. `schema.public`.
+    /// References to them resolve; `Document::get` returns `None` for them unless declared.
+    pub implicit: Vec<crate::value::Address>,
 }
 
 impl SchemaSpec {

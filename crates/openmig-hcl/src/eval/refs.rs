@@ -233,6 +233,9 @@ impl Loader<'_> {
             self.by_address.get(&address).map(|&id| (address, id, 1))
         };
         let Some((address, id, used)) = found else {
+            if let Some(value) = self.implicit_ref(kind, &s1, root_span, &segments[1..]) {
+                return value;
+            }
             // `table.app.users.x` reads as a qualified name when `app` is a known namespace.
             let qualified = spec.labels == LabelSpec::Qualified
                 && s2.is_some()
@@ -253,6 +256,32 @@ impl Loader<'_> {
             return Err(self.error(d));
         };
         self.follow(address, id, root_span, &segments[used..], None)
+    }
+
+    /// A reference to an implicit block (`SchemaSpec::implicit`) that no file declares: only the
+    /// reference itself or its `.name` can be used.
+    fn implicit_ref(
+        &self,
+        kind: &str,
+        label: &str,
+        root_span: Span,
+        rest: &[Segment],
+    ) -> Option<Eval> {
+        let address = self.spec.implicit.iter().find(|a| {
+            a.kind == kind && a.nested.is_empty() && a.labels.last().is_some_and(|l| l == label)
+        })?;
+        Some(match rest {
+            [] => Ok(Value::Ref(address.clone())),
+            [seg] if matches!(&seg.key, Key::Name(n) if n == "name") => {
+                Ok(Value::String(label.to_owned()))
+            }
+            [seg, ..] => Err(self.error(
+                Diagnostic::error(format!(
+                    "`{kind}.{label}` is not declared, so only `.name` can follow it"
+                ))
+                .at(root_span.to(seg.span)),
+            )),
+        })
     }
 
     /// Resolves the segments after a block reference: nested blocks and a final `.name`.

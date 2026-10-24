@@ -1,7 +1,7 @@
 //! The PostgreSQL block vocabulary (see `docs/spec/hcl.md`).
 
 use crate::settings::PgSettings;
-use openmig_hcl::{BlockSpec, LabelSpec, SchemaSpec};
+use openmig_hcl::{Address, BlockSpec, LabelSpec, SchemaSpec};
 
 const KEY: &[BlockSpec] = &[BlockSpec::new("key", LabelSpec::None)];
 
@@ -76,8 +76,16 @@ const BLOCKS: &[BlockSpec] = &[
 ];
 
 pub fn schema_spec(settings: &PgSettings) -> SchemaSpec {
+    let mut implicit = vec![Address::new("schema", vec!["public".to_owned()])];
+    if settings.default_schema != "public" {
+        implicit.push(Address::new(
+            "schema",
+            vec![settings.default_schema.clone()],
+        ));
+    }
     SchemaSpec {
         blocks: BLOCKS,
         default_namespace: settings.default_schema.clone(),
+        implicit,
     }
 }
