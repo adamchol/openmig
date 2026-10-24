@@ -1617,8 +1617,10 @@ name = "openmig-scratch"
 version = "0.1.0"
 dependencies = [
  "etcetera",
+ "hex",
  "nix",
  "serde",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",

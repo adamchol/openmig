@@ -8,13 +8,16 @@
 //!   directory with durability turned off. `initdb` and `postgres` refuse to run as root, so when
 //!   OpenMig runs as root the server runs as an unprivileged user (`run_as`, default `nobody`).
 //! * ClickHouse: one `clickhouse server` with a generated config: embedded Keeper, a single-node
-//!   cluster with macros (so `Replicated` engines and `ON CLUSTER` work), a `local_directory` user
-//!   store, the configured storage policies mapped to the default disk, and system logs disabled.
+//!   cluster with macros (so `Replicated` engines and `ON CLUSTER` work), `local_directory` and
+//!   `replicated` user stores, the configured storage policies mapped to the default disk, and no
+//!   system log tables.
 //!
 //! Servers are started in their own process group with a parent-death signal so they never outlive
-//! OpenMig, and are stopped on drop.
+//! OpenMig, and are killed on drop. Their directories live in `/tmp/openmig-{pg,ch}-*`; directories
+//! of dead OpenMig processes are removed when the next server starts.
 
 mod clickhouse;
+mod http;
 mod postgres;
 mod process;
 
@@ -28,7 +31,7 @@ pub use postgres::PostgresServer;
 #[derive(Debug, thiserror::Error)]
 pub enum ScratchError {
     #[error(
-        "could not find `{binary}` (looked in {searched}); add it to PATH or set `scratch.bin_dir`"
+        "could not find `{binary}` (looked in {searched}); add it to PATH or set `scratch.bin_dir` (PostgreSQL) or `scratch.bin` (ClickHouse)"
     )]
     BinaryNotFound { binary: String, searched: String },
     #[error("scratch server version {found} does not match the configured version {expected}")]
@@ -39,6 +42,10 @@ pub enum ScratchError {
     Timeout { seconds: u64, log: String },
     #[error("user `{0}` (scratch.run_as) does not exist")]
     UnknownUser(String),
+    #[error("invalid scratch settings: {0}")]
+    InvalidSpec(String),
+    #[error("scratch query failed (HTTP {status}): {message}")]
+    Query { status: u16, message: String },
     #[error("scratch io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -69,7 +76,8 @@ pub struct ChSpec {
     #[serde(skip)]
     pub version: Option<u32>,
     /// Cluster name to define (single node). Filled from the database's `cluster` setting when it
-    /// is a plain name; `{cluster}` style macros resolve through `macros.cluster`.
+    /// is a plain name; `{cluster}` style macros resolve through `macros.cluster`. Default:
+    /// `macros.cluster`, else `openmig`.
     pub cluster: Option<String>,
     /// Server macros. Defaults: `shard = "01"`, `replica = "r1"`, `cluster = <cluster>`.
     pub macros: BTreeMap<String, String>,
@@ -77,7 +85,7 @@ pub struct ChSpec {
     pub storage_policies: Vec<String>,
     /// Settings added to the default profile, e.g. `allow_experimental_time_series_table = "1"`.
     pub profile_settings: BTreeMap<String, String>,
-    /// Extra XML merged into the generated server config (`config.d`).
+    /// Extra XML (or YAML) merged into the generated server config (`config.d`).
     pub extra_config: Option<PathBuf>,
     /// User to run the server as when OpenMig runs as root. Default: run as the current user.
     pub run_as: Option<String>,

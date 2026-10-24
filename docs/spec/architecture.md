@@ -124,3 +124,34 @@ the configured `search_path`.
 * ClickHouse: one server with embedded Keeper, a single-node cluster and macros. Reset: drop every
   non-system database (`SYNC`) and every role/user created since start.
 * In `--watch` mode the scratch server lives for the whole session.
+
+Details (`openmig-scratch`):
+
+* Every server gets a directory `/tmp/openmig-pg-XXXXXX` or `/tmp/openmig-ch-XXXXXX` (short, because
+  unix socket paths are limited to about 107 bytes) holding its data, socket, logs and a pid file
+  naming the OpenMig process. Starting a server removes directories whose pid file names a dead
+  process.
+* Servers run in their own process group and are forked from one long-lived thread with
+  `PR_SET_PDEATHSIG = SIGKILL` (set after the user switch, which would clear it), so they die with
+  OpenMig even when it is killed. Stop: PostgreSQL `SIGQUIT` (immediate shutdown), ClickHouse
+  `SIGTERM`; `SIGKILL` after a grace period or on drop.
+* PostgreSQL: `initdb -U openmig --auth=trust -N --encoding=UTF8 --locale=C.UTF-8`; the pristine data
+  directory is cached in `$XDG_CACHE_HOME/openmig/pg/<hash>/data` (hash of the binaries, version,
+  arguments and locale/`TZ` environment), populated by an atomic rename and copied for later starts.
+  `initdb` and `postgres` refuse to run as root, so as root they run as `run_as` (default `nobody`)
+  and the socket is created with mode 0777. Ready when `postmaster.pid` reports `ready`. URL:
+  `postgresql:///postgres?host=<dir>&port=5432&user=openmig`.
+* ClickHouse: `clickhouse server` with a generated `config.xml` on kernel-picked loopback ports
+  (retried on a port conflict): embedded Keeper with fast single-node election, `<zookeeper>`,
+  macros `shard = 01`, `replica = r1`, `cluster = <cluster>`, a one-shard `remote_servers` cluster,
+  `distributed_ddl`, `keeper_map_path_prefix`, user directories `users_xml`, `local_directory` (the
+  default for `CREATE ROLE/USER`) and `replicated`, each configured storage policy mapped to the
+  default disk, `enable_read_write_grants`, `UTC` time zone, small caches and thread pools. System
+  log tables are simply not configured (ClickHouse only creates the configured ones). The `default`
+  user has no password and every privilege including access management and named collections.
+  Ready when `/ping` answers and `system.zookeeper` can be read. URL:
+  `http://default@127.0.0.1:<http port>/`.
+
+Tests lease servers from process-wide pools in `openmig-testkit` (`postgres()`, `clickhouse()`;
+sizes `OPENMIG_TEST_PG_SERVERS` = 2 and `OPENMIG_TEST_CH_SERVERS` = 1, PostgreSQL major version
+`OPENMIG_TEST_PG_VERSION`). A returned server is reset before its next lease.
