@@ -442,6 +442,7 @@ fixtures!(
     enums,
     enum_removal,
     enum_recreate_unused,
+    enum_recreate_columns,
     views,
     view_columns_change,
     materialized_views,

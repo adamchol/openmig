@@ -1,5 +1,6 @@
--- An enum that no column uses is recreated when values are removed or reordered, together with
--- the function that uses it.
+-- With allow_recreate, an enum whose values are removed or reordered is recreated together
+-- with the function that uses it.
+-- recreate
 -- @both
 CREATE SCHEMA app;
 -- @a

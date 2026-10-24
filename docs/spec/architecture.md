@@ -128,8 +128,9 @@ nested in it. `plan` turns changes into ordered statements:
 * Sequences: `ALTER SEQUENCE` with every option (so that a type change does not move the bounds);
   `OWNED BY` as a separate statement after the owning column exists. Sequences owned by a dropped
   table or column are dropped by PostgreSQL with it.
-* Enums: `ADD VALUE [BEFORE|AFTER]`, in declared order. Removing or reordering values recreates
-  the type (with its dependants) when no table column uses it; otherwise unsupported.
+* Enums: `ADD VALUE [BEFORE|AFTER]`, in declared order. Removing or reordering values is
+  unsupported; with `allow_recreate` the type is recreated with its dependants (columns using it
+  are dropped and added again).
 * Composite types: `ADD/DROP ATTRIBUTE` and `ALTER ATTRIBUTE ... TYPE` in place when the resulting
   attribute order is the desired one; reordering recreates the type when no table column uses it.
   Retyping an attribute while a table column uses the type is unsupported. Domains: default,
@@ -151,8 +152,9 @@ nested in it. `plan` turns changes into ordered statements:
 * Unsupported (error with a hint to write the migration by hand with `openmig new`, or to allow
   recreating with `sync --recreate`): changing a generated column's expression before 17, a plain
   column becoming generated, an identity column becoming generated, partitioning changes,
-  removing or reordering enum values and the other type changes above while table columns use the
-  type. With `allow_recreate` the column or table is dropped and created again (destructive).
+  removing or reordering enum values, and the composite and domain changes above while table
+  columns use the type. With `allow_recreate` the column, table or type is dropped and created
+  again (destructive).
 * Owners are not managed; owner differences are ignored.
 
 #### Steps and ordering

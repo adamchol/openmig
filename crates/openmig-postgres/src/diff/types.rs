@@ -150,7 +150,7 @@ impl Differ<'_> {
                 (Some(_), None) => self.drop(r),
                 (Some(c), Some(d)) => {
                     let Some(additions) = enum_additions(&c.values, &d.values) else {
-                        self.recreate_type(r, "enum values were removed or reordered");
+                        self.unsupported(r, "enum values were removed or reordered");
                         continue;
                     };
                     let mut ops: Vec<AlterOp> = additions
