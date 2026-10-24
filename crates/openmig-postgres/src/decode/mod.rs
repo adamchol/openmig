@@ -903,7 +903,7 @@ impl<'a> Decoder<'a> {
     }
 
     /// Relations (tables, views, sequences, indexes, composite types) share one namespace per
-    /// schema, and so do types (including the row types of relations).
+    /// schema, and so do types (including the row types of tables and views).
     fn check_namespaces(&self) {
         for schema in self.db.schemas.values() {
             let s = schema.name.as_str();
@@ -936,7 +936,6 @@ impl<'a> Decoder<'a> {
             }
             for q in schema.sequences.values() {
                 relations.push(r2(ObjectKind::Sequence, &q.name));
-                types.push(r2(ObjectKind::Sequence, &q.name));
             }
             for c in schema.composites.values() {
                 relations.push(r2(ObjectKind::Composite, &c.name));

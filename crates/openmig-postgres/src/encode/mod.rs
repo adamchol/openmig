@@ -10,6 +10,9 @@ mod objects;
 mod table;
 mod values;
 
+#[cfg(test)]
+mod tests;
+
 use crate::model::{Database, Function, Schema};
 use crate::settings::PgSettings;
 use openmig_core::{EncodeOptions, EncodedFile, SplitBy};
