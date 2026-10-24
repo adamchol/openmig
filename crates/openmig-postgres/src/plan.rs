@@ -19,6 +19,8 @@ mod order;
 pub(crate) mod rebuild;
 pub(crate) mod refs;
 mod step;
+#[cfg(test)]
+mod tests;
 
 use crate::PostgresEngine;
 use crate::diff::{AclDelta, Change, Options, rename};

@@ -469,12 +469,13 @@ fixtures!(
     primary_key_with_references,
     name_conflicts,
     composite_used_unsupported,
+    duplicate_unique,
 );
 
 /// Apply a plan built from a decoded schema the way `normalize` does: one transaction with a
 /// savepoint per statement; statements failing because an object does not exist yet are retried
 /// after the others. Returns how many statements had to be retried.
-async fn apply_with_retry(
+pub async fn apply_with_retry(
     session: &mut openmig_postgres::PgSession,
     plan: &Plan,
 ) -> Result<usize, String> {
@@ -777,5 +778,96 @@ async fn roles_and_memberships() {
     drop(lease_admin);
     drop(lease);
     a.drop().await;
+    crate::common::drop_roles(prefix).await;
+}
+
+/// Encode a model to HCL and decode it again: the "natural" form a user's schema decodes to.
+pub fn decoded_from(model: &Database) -> openmig_core::Desired<Database> {
+    let settings = PgSettings::default();
+    let files = PostgresEngine::encode(model, &settings, &openmig_core::EncodeOptions::default());
+    let spec = PostgresEngine::schema_spec(&settings);
+    let sources = files
+        .iter()
+        .map(|f| (f.path.clone(), f.content.clone()))
+        .collect();
+    let opts = openmig_hcl::LoadOptions {
+        spec: &spec,
+        vars: Default::default(),
+    };
+    let doc = openmig_hcl::load_sources(sources, &opts)
+        .unwrap_or_else(|e| panic!("encoded HCL does not load:\n{}", e.render(false)));
+    PostgresEngine::decode(&doc, &settings).unwrap_or_else(|e| panic!("decode: {e}"))
+}
+
+/// The real normalization path: the rich schema is inspected, encoded to HCL and decoded, then
+/// built from a pristine database of another server with `PlanMode::Scratch`. Inspecting the
+/// result gives the original schema back.
+#[tokio::test]
+async fn scratch_build_from_decoded_rich_schema() {
+    let _roles = ROLES.read().await;
+    let prefix = "omp_dec_";
+    let Some(source) = TestDb::create("omp_decoded_source").await else {
+        return;
+    };
+    crate::common::drop_roles(prefix).await;
+    run(
+        &mut admin().await,
+        &crate::common::with_prefix(RICH_ROLES, prefix),
+    )
+    .await;
+    let major = source.major().await;
+    let mut sql = RICH.to_owned();
+    for (min, part) in [(15, RICH_15), (17, RICH_17), (18, RICH_18)] {
+        if major >= min {
+            sql.push_str(part);
+        }
+    }
+    source.run(&crate::common::with_prefix(&sql, prefix)).await;
+    let mut scope = Scope {
+        manage_roles: true,
+        data_tables: vec![DataTable {
+            path: vec!["app".into(), "statuses".into()],
+            columns: Vec::new(),
+            mode: Some(DataSync::Sync),
+        }],
+        data_max_rows: 100,
+        ..Scope::default()
+    };
+    let model = own_roles(source.inspect(&scope).await, prefix);
+    let decoded = decoded_from(&model).model;
+    scope.declared_roles = PostgresEngine::declared_roles(&decoded);
+
+    let lease = openmig_testkit::postgres().await;
+    let mut scratch = openmig_postgres::PgSession::connect(
+        lease.url(),
+        &PgSettings::default(),
+        openmig_core::SessionPurpose::Scratch,
+    )
+    .await
+    .unwrap();
+    let pristine = scratch.inspect(&scope).await.unwrap();
+    let plan = diff_and_plan(
+        &pristine,
+        &decoded,
+        &scope,
+        &PgSettings::default(),
+        &RenameSet::default(),
+        PlanMode::Scratch,
+        false,
+    )
+    .unwrap();
+    let text = plan.to_sql();
+    if std::env::var_os("OPENMIG_SHOW_PLANS").is_some() {
+        eprintln!("--- decoded scratch build\n{text}");
+    }
+    let retried = apply_with_retry(&mut scratch, &plan)
+        .await
+        .unwrap_or_else(|e| panic!("scratch build failed: {e}\n{text}"));
+    let built = scratch.inspect(&scope).await.unwrap();
+    assert_eq!(comparable(&built, &scope), comparable(&model, &scope));
+    assert_eq!(retried, 0, "statements had to be retried:\n{text}");
+    drop(scratch);
+    drop(lease);
+    source.drop().await;
     crate::common::drop_roles(prefix).await;
 }

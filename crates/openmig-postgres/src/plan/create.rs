@@ -387,8 +387,12 @@ impl Planner<'_> {
             step.creates
                 .push(r3(ObjectKind::PrimaryKey, s, tn, &pk.name));
         }
-        step.creates
-            .extend(t.uniques.keys().map(|n| r3(ObjectKind::Unique, s, tn, n)));
+        let inline_uniques = sql::inline_uniques(t);
+        step.creates.extend(
+            inline_uniques
+                .iter()
+                .map(|u| r3(ObjectKind::Unique, s, tn, &u.name)),
+        );
         step.creates.extend(
             t.checks
                 .values()
@@ -433,6 +437,18 @@ impl Planner<'_> {
         }
         self.push(step);
 
+        for u in t.uniques.values() {
+            if !inline_uniques.iter().any(|i| i.name == u.name) {
+                let ur = r3(ObjectKind::Unique, s, tn, &u.name);
+                self.add_constraint(
+                    &ur,
+                    &sql::unique_definition(u),
+                    &u.columns,
+                    true,
+                    rank::CONSTRAINT,
+                );
+            }
+        }
         for c in t.checks.values().filter(|c| !c.validated) {
             let cr = r3(ObjectKind::Check, s, tn, &c.name);
             self.add_constraint(&cr, &sql::check_definition(c), &[], false, rank::CONSTRAINT);
@@ -476,7 +492,9 @@ impl Planner<'_> {
         for c in &t.columns {
             let cr = r3(ObjectKind::Column, s, tn, &c.name);
             self.comment_if(&cr, c.comment.as_deref());
-            if let Some(delta) = acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major) {
+            if let Some(delta) =
+                acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major)
+            {
                 self.acl_step(&cr, &delta);
             }
         }
@@ -507,7 +525,9 @@ impl Planner<'_> {
                 fk.comment.as_deref(),
             );
         }
-        if let Some(delta) = acl_for_new(ObjectKind::Table, &t.acl, self.opts.scope, self.opts.major) {
+        if let Some(delta) =
+            acl_for_new(ObjectKind::Table, &t.acl, self.opts.scope, self.opts.major)
+        {
             self.acl_step(r, &delta);
         }
     }
@@ -565,7 +585,9 @@ impl Planner<'_> {
         step.hints.extend(Self::column_hints(c));
         self.push(step);
         self.comment_if(r, c.comment.as_deref());
-        if let Some(delta) = acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major) {
+        if let Some(delta) =
+            acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major)
+        {
             self.acl_step(r, &delta);
         }
     }
@@ -745,7 +767,9 @@ impl Planner<'_> {
         for c in columns {
             let cr = r3(ObjectKind::Column, &r.path[0], &r.path[1], &c.name);
             self.comment_if(&cr, c.comment.as_deref());
-            if let Some(delta) = acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major) {
+            if let Some(delta) =
+                acl_for_new(ObjectKind::Column, &c.acl, self.opts.scope, self.opts.major)
+            {
                 self.acl_step(&cr, &delta);
             }
         }

@@ -8,8 +8,27 @@ use crate::model::{
 };
 use std::collections::BTreeMap;
 
-/// `CREATE TABLE` with the given columns and inline constraints (primary key, unique, check and
-/// exclusion constraints that are valid, plus `fks`). Partitions name their parent instead of
+/// Unique constraints that can be written inside `CREATE TABLE`. Within one `CREATE TABLE`,
+/// PostgreSQL silently drops a unique constraint on the same columns as the primary key or an
+/// earlier unique constraint, so those are added afterwards.
+pub(crate) fn inline_uniques(t: &Table) -> Vec<&Unique> {
+    let mut seen: Vec<(&[String], &[String])> = Vec::new();
+    if let Some(pk) = &t.primary_key {
+        seen.push((&pk.columns, &pk.include));
+    }
+    let mut out = Vec::new();
+    for u in t.uniques.values() {
+        let key = (u.columns.as_slice(), u.include.as_slice());
+        if !seen.contains(&key) {
+            seen.push(key);
+            out.push(u);
+        }
+    }
+    out
+}
+
+/// `CREATE TABLE` with the given columns and inline constraints (primary key, [`inline_uniques`],
+/// valid checks, exclusion constraints, plus `fks`). Partitions name their parent instead of
 /// listing columns.
 pub(crate) fn create_table(
     name: &QualifiedName,
@@ -24,7 +43,7 @@ pub(crate) fn create_table(
     if let Some(pk) = &t.primary_key {
         items.push(primary_key_definition(pk));
     }
-    items.extend(t.uniques.values().map(unique_definition));
+    items.extend(inline_uniques(t).into_iter().map(unique_definition));
     items.extend(
         t.checks
             .values()

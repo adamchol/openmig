@@ -4,6 +4,7 @@
 
 mod common;
 mod dialo;
+mod dialo_replay;
 mod inspect;
 mod plan;
 mod roundtrip;

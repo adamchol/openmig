@@ -64,7 +64,9 @@ the configured `search_path`.
 
 `diff` compares two models object kind by object kind, keyed by identity, in deterministic
 (`BTreeMap`) order, and produces engine `Change`s: `Create`, `Drop`, `Alter { ops }`, `Rename`,
-`Recreate`. `plan` turns changes into ordered statements:
+`Recreate` (PostgreSQL adds `Data` for rows). Changes name objects by key; the planner looks
+their definitions up in the two models. `Create` and `Drop` cover an object with everything
+nested in it. `plan` turns changes into ordered statements:
 
 1. **Expand blocked changes.** Some changes are blocked by dependants that did not change
    themselves (a column type change used by a view or policy; a function that must be dropped and
@@ -87,20 +89,109 @@ the configured `search_path`.
 
 ### PostgreSQL planning rules
 
-* Tables are never rebuilt. Columns: `ADD/DROP COLUMN`, `ALTER COLUMN TYPE ... USING`,
-  `SET/DROP NOT NULL`, `SET/DROP DEFAULT`, identity changes, `SET EXPRESSION` (17+).
-* Functions: `CREATE OR REPLACE` when input argument types, return type and argument names are
-  unchanged and no defaults are removed (keeps grants, owner, comment); otherwise drop + create,
+* Tables are never rebuilt. Columns: `ADD/DROP COLUMN`, `ALTER COLUMN TYPE ... USING col::type`
+  (with `COLLATE` for collation changes; an existing default is dropped first and set again),
+  `SET/DROP NOT NULL`, `SET/DROP DEFAULT`, identity changes (`ADD GENERATED ... AS IDENTITY`,
+  `SET GENERATED`, `SET <sequence option>`, `DROP IDENTITY`), `SET EXPRESSION` (17+, virtual
+  columns 18+), `DROP EXPRESSION` (stored generated column to plain column), `SET STORAGE`,
+  `SET COMPRESSION`. Column order differences are ignored. Columns of partitions, and columns an
+  `INHERITS` child gets from its parents, are managed through the parent.
+* `CREATE TABLE` carries the columns, primary key, unique constraints (except one on the same
+  columns as the primary key or an earlier unique constraint, which PostgreSQL would silently
+  drop), valid checks, exclusion constraints and foreign keys to tables that exist or are created
+  earlier outside a foreign-key cycle. Everything else (cyclic foreign keys, `NOT VALID`
+  constraints, indexes, policies, triggers, RLS, replica identity, comments, grants) follows as
+  separate statements. Partitions are created `PARTITION OF` their parent; a changed bound or
+  parent is `DETACH PARTITION` + `ATTACH PARTITION`; `INHERITS` parents are added and removed with
+  `INHERIT` / `NO INHERIT`.
+* Functions and procedures: `CREATE OR REPLACE` when the arguments (modes, types and names, hence
+  also `OUT` parameters), the result and the kind (`WINDOW`) are unchanged and no argument default
+  is removed (keeps grants, owner, comment); `ALTER FUNCTION` when only attributes (volatility,
+  strictness, security, leakproof, parallel, cost, rows, `SET`) change; otherwise drop + create,
   rebuild dependants, re-grant.
-* Views: `CREATE OR REPLACE VIEW` when the old columns remain a prefix with the same names and types;
-  otherwise drop + create with dependants.
-* Policies: `ALTER POLICY` unless `for` or `as` changes (then drop + create). Triggers:
-  `CREATE OR REPLACE TRIGGER` (14+).
-* Indexes, checks, foreign keys, unique constraints: drop + create on change.
-* Enums: `ADD VALUE [BEFORE|AFTER]`. Removing or reordering values is unsupported.
-* Unsupported (error with a hint to write the migration by hand with `openmig new`): changing a
-  generated column's expression before 17, partitioning changes, removing enum values.
+* Views: `CREATE OR REPLACE VIEW` when the old columns remain a prefix with the same names and types
+  (options are replaced with it); `ALTER VIEW ... SET/RESET (...)` when only options change;
+  otherwise drop + create with dependants. Materialized views: drop + create (with their indexes)
+  when the query changes, `ALTER MATERIALIZED VIEW ... SET/RESET` for storage parameters,
+  `REFRESH MATERIALIZED VIEW [WITH NO DATA]` for the populated state.
+* Policies: `ALTER POLICY` for roles, `USING` and `WITH CHECK`, unless `for` or `as` changes or a
+  `USING` / `WITH CHECK` clause is removed (then drop + create). Triggers:
+  `CREATE OR REPLACE TRIGGER` (14+), except constraint triggers (drop + create); the firing mode
+  (`ENABLE`, `DISABLE`, `ENABLE REPLICA`, `ENABLE ALWAYS`) is set again after a replace.
+* Indexes, checks, foreign keys, unique, primary key and exclusion constraints: drop + create on
+  change; `VALIDATE CONSTRAINT` when a `NOT VALID` constraint becomes valid. Domain checks
+  likewise with `ALTER DOMAIN`.
+* With `concurrent_indexes`, index creation and removal on tables and materialized views that
+  exist before and after the plan (and are not partitioned) use `CONCURRENTLY`; in `generate`
+  each creation is preceded by `DROP INDEX CONCURRENTLY IF EXISTS` so that a failed file can be
+  retried. Never in scratch builds.
+* Sequences: `ALTER SEQUENCE` with every option (so that a type change does not move the bounds);
+  `OWNED BY` as a separate statement after the owning column exists. Sequences owned by a dropped
+  table or column are dropped by PostgreSQL with it.
+* Enums: `ADD VALUE [BEFORE|AFTER]`, in declared order. Removing or reordering values recreates
+  the type (with its dependants) when no table column uses it; otherwise unsupported.
+* Composite types: `ADD/DROP ATTRIBUTE` and `ALTER ATTRIBUTE ... TYPE` in place when the resulting
+  attribute order is the desired one; reordering recreates the type when no table column uses it.
+  Retyping an attribute while a table column uses the type is unsupported. Domains: default,
+  `NOT NULL` and checks in place; a changed base type or collation recreates the domain when no
+  table column uses it, otherwise unsupported.
+* Roles (only with `manage_roles`, and always in scratch builds): `CREATE ROLE`, `ALTER ROLE` for
+  attributes, memberships with `GRANT role TO member WITH ADMIN|INHERIT|SET TRUE` (16+; only
+  `ADMIN OPTION` before) and `REVOKE ... OPTION FOR`. An expiry cannot be removed, so `VALID UNTIL
+  'infinity'` and no expiry compare equal.
+* Privileges: only managed grantees are compared (`hcl.md`). A created (or recreated) object starts
+  from PostgreSQL's default ACL for its kind. `MAINTAIN` is ignored before PostgreSQL 17.
+* Extensions: `CREATE EXTENSION IF NOT EXISTS ... WITH SCHEMA`; `VERSION` only in scratch builds
+  and only when declared; versions are never compared; `ALTER EXTENSION ... SET SCHEMA`. The
+  comment `CREATE EXTENSION` sets is only changed when the desired side has one.
+* Data: rows are compared by the desired key on the declared columns, as PostgreSQL text. Values
+  are written as string literals that PostgreSQL casts; identity `ALWAYS` columns are inserted with
+  `OVERRIDING SYSTEM VALUE`. Rows run after every other change of their table; referenced tables
+  get their inserts and updates before, and their deletes after, the referencing tables.
+* Unsupported (error with a hint to write the migration by hand with `openmig new`, or to allow
+  recreating with `sync --recreate`): changing a generated column's expression before 17, a plain
+  column becoming generated, an identity column becoming generated, partitioning changes,
+  removing or reordering enum values and the other type changes above while table columns use the
+  type. With `allow_recreate` the column or table is dropped and created again (destructive).
 * Owners are not managed; owner differences are ignored.
+
+#### Steps and ordering
+
+Each change becomes steps: statements plus the objects the step *creates* (exist with their
+desired definition afterwards), *removes* (dropped, or changed in a way dependants block),
+*releases* (whose current dependencies it gives up: drops and redefinitions) and *requires*.
+Requirements come from the model's structure (schemas, relations, column types, foreign keys,
+trigger and event trigger functions, policy roles, grantees, sequence owners, partition parents)
+and from the desired model's `dependencies`. Edges:
+
+* a step creating X runs before the steps requiring X;
+* a step releasing X runs before the steps removing what X depends on (current dependencies);
+* a step removing X runs before a step creating an object that takes the same name (relations,
+  indexes and composite types share one namespace per schema, types another, constraints are
+  unique per table);
+* renames run before every other step on the renamed object; rows run after every other step on
+  their table; revokes run before the grantee role is dropped;
+* soft edges from identifiers in SQL text (function bodies always; defaults, checks, index
+  expressions, policies, trigger conditions and view queries in scratch builds, whose decoded
+  model has no dependencies) are dropped when they would form a cycle.
+
+Blocked dependants: when an object is dropped or recreated, every current dependant that the plan
+does not drop or recreate itself is dropped before and created after it (from the desired model,
+with its comments, grants and nested triggers or indexes). A dependant that is redefined in place
+(`CREATE OR REPLACE`, `ALTER POLICY`) does not need this when the object is dropped for good.
+For a column type or expression change, PostgreSQL rebuilds indexes and constraints itself, so
+only views, materialized views, policies, triggers, generated columns and functions with
+SQL-standard bodies are rebuilt. Column and domain defaults using a recreated function are
+dropped and set again; generated columns are dropped and added again (their values are
+recomputed). A table column whose type would have to be dropped is unsupported.
+
+Plans that create SQL-language functions with string bodies start with
+`SET check_function_bodies = off`, in every mode: such bodies may reference objects created later
+in the plan, and their references are not recorded in `pg_depend`.
+
+Scratch builds plan no drops: the pristine database only has the `public` schema, which the
+decoded model always declares. Roles named by the decoded model but not declared
+(`external_roles`) are created `NOLOGIN` when missing.
 
 ### ClickHouse planning rules
 
@@ -117,6 +208,12 @@ the configured `search_path`.
 * Hints: `renamed_from` on the desired object. Applied when the old object exists in the current
   model and is absent from the desired model, and the new object is absent from the current model.
   The current model is re-keyed before diffing, so a rename plus another change works.
+* PostgreSQL: tables and columns. A table moved to another schema is `SET SCHEMA` (which also moves
+  its indexes, constraints and owned sequences) followed by `RENAME TO`. Column hints may name the
+  table by its old or new name. Re-keying rewrites what PostgreSQL rewrites itself: foreign keys,
+  partition and inheritance parents, sequence owners, column lists of constraints and indexes,
+  unqualified references to the renamed column in expressions of its table, and `nextval` defaults
+  of moved sequences.
 * Interactive (TTY only, `sync` and local `generate`): drop + create pairs of the same kind in the same
   container are offered as renames — columns with the same type and nullability, tables whose column
   sets overlap by at least 70%. Accepting prints the `renamed_from` line to add to the schema. Without
