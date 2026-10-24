@@ -43,11 +43,12 @@ async fn dispatch(
     cli: &Cli,
     ui: &dyn Ui,
 ) -> Result<u8, Error> {
-    let _ = (db, cli, ui);
-    Err(Error::Config(format!(
-        "the {} engine is not available in this build yet",
-        engine.as_str()
-    )))
+    match engine {
+        EngineKind::Postgres => run_engine::<openmig_postgres::PostgresEngine>(db, cli, ui).await,
+        EngineKind::ClickHouse => Err(Error::Config(
+            "the clickhouse engine is not available in this build yet".into(),
+        )),
+    }
 }
 
 /// Run one command for one database with engine `E`.
