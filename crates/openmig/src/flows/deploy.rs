@@ -24,7 +24,6 @@ pub async fn deploy<E: Engine>(
         .map_err(Error::Config)?;
     let mut session = connect_with_retry::<E>(&url, ctx, wait, ui).await?;
     let d = &ctx.config.deploy;
-    #[allow(clippy::needless_update)]
     let options = DeployOptions {
         to: args.to.clone(),
         baseline: args.baseline.clone(),
@@ -37,6 +36,7 @@ pub async fn deploy<E: Engine>(
             .map_err(Error::Config)?,
         applied_by: applied_by(),
         record_history: true,
+        scope: ctx.scope()?,
         ..DeployOptions::default()
     };
     let mut progress = UiProgress { ui };
