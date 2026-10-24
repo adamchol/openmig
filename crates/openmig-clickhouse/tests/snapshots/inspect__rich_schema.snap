@@ -1,0 +1,645 @@
+---
+source: crates/openmig-clickhouse/tests/inspect.rs
+expression: compact(&model)
+---
+Model {
+    databases: {
+        "analytics": Database {
+            name: "analytics",
+            engine: "Replicated('/clickhouse/databases/analytics', '{shard}', '{replica}')",
+            comment: Some(
+                "product analytics",
+            ),
+            tables: {
+                "app_logs": Table {
+                    name: "app_logs",
+                    engine: "ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+                    columns: [
+                        Column {
+                            name: "ts",
+                            data_type: "DateTime64(9)",
+                            codec: [
+                                "Delta(8)",
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "ts_time",
+                            data_type: "DateTime",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Default,
+                                    expression: "toDateTime(ts)",
+                                },
+                            ),
+                        },
+                        Column {
+                            name: "trace_id",
+                            data_type: "String",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "severity",
+                            data_type: "Enum8('debug' = 1, 'info' = 2, 'warn' = 3, 'error' = 4)",
+                        },
+                        Column {
+                            name: "service",
+                            data_type: "LowCardinality(String)",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "body",
+                            data_type: "String",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "attributes",
+                            data_type: "Map(LowCardinality(String), String)",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "user_id",
+                            data_type: "Nullable(UInt64)",
+                            ttl: Some(
+                                "ts_time + toIntervalDay(30)",
+                            ),
+                        },
+                        Column {
+                            name: "day",
+                            data_type: "Date",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Materialized,
+                                    expression: "toDate(ts)",
+                                },
+                            ),
+                        },
+                        Column {
+                            name: "service_upper",
+                            data_type: "String",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Alias,
+                                    expression: "upper(service)",
+                                },
+                            ),
+                        },
+                        Column {
+                            name: "raw",
+                            data_type: "String",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Ephemeral,
+                                    expression: "defaultValueOfTypeName('String')",
+                                },
+                            ),
+                        },
+                    ],
+                    partition_by: Some(
+                        "toDate(ts_time)",
+                    ),
+                    order_by: [
+                        "service",
+                        "ts_time",
+                        "ts",
+                    ],
+                    primary_key: [
+                        "service",
+                        "ts_time",
+                    ],
+                    ttl: Some(
+                        "ts_time + toIntervalDay(180)",
+                    ),
+                    settings: {
+                        "index_granularity": "8192",
+                        "storage_policy": "'encrypted'",
+                        "ttl_only_drop_parts": "1",
+                    },
+                    indexes: {
+                        "idx_attr_keys": Index {
+                            expression: "mapKeys(attributes)",
+                            index_type: "bloom_filter(0.01)",
+                            granularity: 1,
+                        },
+                        "idx_body": Index {
+                            expression: "body",
+                            index_type: "tokenbf_v1(32768, 3, 0)",
+                            granularity: 8,
+                        },
+                        "idx_service": Index {
+                            expression: "service",
+                            index_type: "ngrambf_v1(3, 256, 2, 0)",
+                            granularity: 2,
+                        },
+                        "idx_ts": Index {
+                            expression: "ts",
+                            index_type: "minmax",
+                            granularity: 1,
+                        },
+                    },
+                    projections: {
+                        "by_service": Projection {
+                            query: "SELECT service, count() GROUP BY service",
+                        },
+                    },
+                    constraints: {
+                        "has_service": Constraint {
+                            kind: Assume,
+                            expression: "service != ''",
+                        },
+                        "known_severity": Constraint {
+                            kind: Check,
+                            expression: "severity != 'debug'",
+                        },
+                    },
+                },
+                "events": Table {
+                    name: "events",
+                    engine: "ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+                    columns: [
+                        Column {
+                            name: "call_id",
+                            data_type: "String",
+                        },
+                        Column {
+                            name: "offset_ms",
+                            data_type: "Float64",
+                        },
+                        Column {
+                            name: "timestamp",
+                            data_type: "DateTime64(9)",
+                        },
+                        Column {
+                            name: "kind",
+                            data_type: "LowCardinality(String)",
+                        },
+                        Column {
+                            name: "payload",
+                            data_type: "String",
+                            comment: Some(
+                                "raw JSON",
+                            ),
+                        },
+                    ],
+                    partition_by: Some(
+                        "toYYYYMM(timestamp)",
+                    ),
+                    order_by: [
+                        "timestamp",
+                    ],
+                    primary_key: [
+                        "timestamp",
+                    ],
+                    settings: {
+                        "index_granularity": "8192",
+                        "storage_policy": "'encrypted'",
+                    },
+                    indexes: {
+                        "call_id_set": Index {
+                            expression: "call_id",
+                            index_type: "set(1024)",
+                            granularity: 1,
+                        },
+                    },
+                },
+                "metrics": Table {
+                    name: "metrics",
+                    engine: "TimeSeries",
+                    time_series: Some(
+                        TimeSeriesTargets {
+                            data: Some(
+                                "ENGINE = MergeTree ORDER BY (id, timestamp)",
+                            ),
+                            tags: Some(
+                                "ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id)",
+                            ),
+                            metrics: Some(
+                                "ENGINE = ReplacingMergeTree ORDER BY metric_family_name",
+                            ),
+                        },
+                    ),
+                },
+                "spans": Table {
+                    name: "spans",
+                    engine: "ReplicatedReplacingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}', updated_at)",
+                    columns: [
+                        Column {
+                            name: "trace_id",
+                            data_type: "String",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "start",
+                            data_type: "DateTime64(9)",
+                        },
+                        Column {
+                            name: "duration_ns",
+                            data_type: "UInt64",
+                        },
+                        Column {
+                            name: "links",
+                            data_type: "Array(Tuple(trace_id String, span_id String))",
+                        },
+                        Column {
+                            name: "updated_at",
+                            data_type: "DateTime64(6, 'UTC')",
+                        },
+                    ],
+                    order_by: [
+                        "trace_id",
+                        "toDateTime(start)",
+                    ],
+                    primary_key: [
+                        "trace_id",
+                        "toDateTime(start)",
+                    ],
+                    ttl: Some(
+                        "toDateTime(start) + toIntervalDay(7), toDateTime(start) + toIntervalDay(1) TO DISK 'default'",
+                    ),
+                    settings: {
+                        "index_granularity": "8192",
+                    },
+                },
+                "trace_bounds": Table {
+                    name: "trace_bounds",
+                    engine: "ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+                    columns: [
+                        Column {
+                            name: "trace_id",
+                            data_type: "String",
+                            codec: [
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "first",
+                            data_type: "DateTime64(9)",
+                            codec: [
+                                "Delta(8)",
+                                "ZSTD(1)",
+                            ],
+                        },
+                        Column {
+                            name: "last",
+                            data_type: "DateTime64(9)",
+                            codec: [
+                                "Delta(8)",
+                                "ZSTD(1)",
+                            ],
+                        },
+                    ],
+                    order_by: [
+                        "trace_id",
+                    ],
+                    primary_key: [
+                        "trace_id",
+                    ],
+                    settings: {
+                        "index_granularity": "8192",
+                    },
+                },
+            },
+            views: {
+                "error_logs": View {
+                    name: "error_logs",
+                    query: "SELECT ts, service, (toUnixTimestamp64Milli(ts) / 1000) AS s, body FROM analytics.app_logs WHERE severity = 'error'",
+                },
+            },
+            materialized_views: {
+                "trace_bounds_mv": MaterializedView {
+                    name: "trace_bounds_mv",
+                    to: Some(
+                        QualifiedName {
+                            database: "analytics",
+                            name: "trace_bounds",
+                        },
+                    ),
+                    query: "SELECT trace_id, min(start) AS first, max(start) AS last FROM analytics.spans WHERE trace_id != '' GROUP BY trace_id",
+                    columns: [
+                        Column {
+                            name: "trace_id",
+                            data_type: "String",
+                        },
+                        Column {
+                            name: "first",
+                            data_type: "DateTime64(9)",
+                        },
+                        Column {
+                            name: "last",
+                            data_type: "DateTime64(9)",
+                        },
+                    ],
+                },
+            },
+        },
+        "default": Database {
+            name: "default",
+            engine: "Atomic",
+        },
+        "staging": Database {
+            name: "staging",
+            engine: "Atomic",
+            tables: {
+                "raw": Table {
+                    name: "raw",
+                    engine: "MergeTree",
+                    columns: [
+                        Column {
+                            name: "id",
+                            data_type: "UInt64",
+                        },
+                        Column {
+                            name: "value",
+                            data_type: "String",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Default,
+                                    expression: "''",
+                                },
+                            ),
+                        },
+                        Column {
+                            name: "at",
+                            data_type: "DateTime",
+                        },
+                        Column {
+                            name: "secs",
+                            data_type: "Float64",
+                            default: Some(
+                                ColumnDefault {
+                                    kind: Default,
+                                    expression: "id / 1000",
+                                },
+                            ),
+                        },
+                    ],
+                    order_by: [
+                        "id",
+                    ],
+                    primary_key: [
+                        "id",
+                    ],
+                    sample_by: Some(
+                        "id",
+                    ),
+                    settings: {
+                        "index_granularity": "1024",
+                    },
+                    comment: Some(
+                        "landing table",
+                    ),
+                },
+            },
+        },
+    },
+    functions: {
+        "ms_to_s": Function {
+            name: "ms_to_s",
+            parameters: [
+                "ms",
+            ],
+            body: "ms / 1000",
+        },
+    },
+    roles: {
+        "admin": Role {
+            name: "admin",
+            storage: "replicated",
+        },
+        "gateway": Role {
+            name: "gateway",
+            storage: "local_directory",
+        },
+        "ingest": Role {
+            name: "ingest",
+            storage: "local_directory",
+        },
+        "reader": Role {
+            name: "reader",
+            storage: "local_directory",
+        },
+    },
+    users: {
+        "app": User {
+            name: "app",
+            storage: "local_directory",
+            host_ip: [
+                "10.0.0.0/8",
+            ],
+            default_roles: RoleSet {
+                names: [
+                    "reader",
+                ],
+            },
+            default_database: Some(
+                "analytics",
+            ),
+            grantees: RoleSet {
+                all: true,
+            },
+        },
+    },
+    grants: [
+        Grant {
+            grantee: Role(
+                "admin",
+            ),
+            database: Some(
+                "analytics",
+            ),
+            grant_option: true,
+            privileges: {
+                "ALL",
+            },
+        },
+        Grant {
+            grantee: Role(
+                "gateway",
+            ),
+            database: Some(
+                "analytics",
+            ),
+            table: Some(
+                "events",
+            ),
+            grant_option: true,
+            privileges: {
+                "ALL",
+            },
+        },
+        Grant {
+            grantee: Role(
+                "ingest",
+            ),
+            database: Some(
+                "analytics",
+            ),
+            table: Some(
+                "spans",
+            ),
+            columns: [
+                "start",
+            ],
+            privileges: {
+                "SELECT",
+            },
+        },
+        Grant {
+            grantee: Role(
+                "ingest",
+            ),
+            database: Some(
+                "analytics",
+            ),
+            table: Some(
+                "spans",
+            ),
+            columns: [
+                "trace_id",
+            ],
+            privileges: {
+                "INSERT",
+                "SELECT",
+            },
+        },
+        Grant {
+            grantee: Role(
+                "ingest",
+            ),
+            database: Some(
+                "staging",
+            ),
+            table: Some(
+                "raw",
+            ),
+            privileges: {
+                "INSERT",
+            },
+        },
+        Grant {
+            grantee: Role(
+                "reader",
+            ),
+            database: Some(
+                "analytics",
+            ),
+            privileges: {
+                "SELECT",
+            },
+        },
+    ],
+    role_grants: [
+        RoleGrant {
+            grantee: Role(
+                "admin",
+            ),
+            role: "reader",
+            admin_option: true,
+        },
+        RoleGrant {
+            grantee: User(
+                "app",
+            ),
+            role: "reader",
+        },
+    ],
+    row_policies: {
+        RowPolicyId {
+            database: "analytics",
+            table: "events",
+            name: "kind_a",
+        }: RowPolicy {
+            filter: Some(
+                "kind = 'a'",
+            ),
+            to: RoleSet {
+                names: [
+                    "reader",
+                ],
+            },
+            storage: "local_directory",
+        },
+    },
+    dependencies: [
+        Dependency {
+            from: ObjectRef {
+                kind: View,
+                path: [
+                    "analytics",
+                    "error_logs",
+                ],
+            },
+            to: ObjectRef {
+                kind: Table,
+                path: [
+                    "analytics",
+                    "app_logs",
+                ],
+            },
+            soft: true,
+        },
+        Dependency {
+            from: ObjectRef {
+                kind: MaterializedView,
+                path: [
+                    "analytics",
+                    "trace_bounds_mv",
+                ],
+            },
+            to: ObjectRef {
+                kind: Table,
+                path: [
+                    "analytics",
+                    "spans",
+                ],
+            },
+        },
+        Dependency {
+            from: ObjectRef {
+                kind: MaterializedView,
+                path: [
+                    "analytics",
+                    "trace_bounds_mv",
+                ],
+            },
+            to: ObjectRef {
+                kind: Table,
+                path: [
+                    "analytics",
+                    "trace_bounds",
+                ],
+            },
+        },
+        Dependency {
+            from: ObjectRef {
+                kind: RowPolicy,
+                path: [
+                    "analytics",
+                    "events",
+                    "kind_a",
+                ],
+            },
+            to: ObjectRef {
+                kind: Table,
+                path: [
+                    "analytics",
+                    "events",
+                ],
+            },
+        },
+    ],
+    server_version: (
+        26,
+        5,
+    ),
+}

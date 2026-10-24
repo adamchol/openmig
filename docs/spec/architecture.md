@@ -34,6 +34,12 @@ normalized by the database itself:
 3. Insert `data` rows.
 4. Inspect the scratch database into the normalized desired model `D`.
 
+ClickHouse keeps parentheses written around a whole expression (`DEFAULT (now())`,
+`ORDER BY ((a), (b))`), so inspection strips redundant outer parentheses from key elements,
+partition and sample expressions, TTLs, column defaults, index and constraint expressions, row
+policy filters and function bodies. View and materialized view queries are compared as the
+server prints them; it inlines SQL functions into them and into column expressions.
+
 Sessions use fixed settings so that both sides print identically. PostgreSQL inspection sessions:
 `search_path = ''` (every name fully qualified), `TimeZone = 'UTC'`, `DateStyle = 'ISO'`,
 `IntervalStyle = 'postgres'`, `extra_float_digits = 3`. Apply sessions (scratch apply and deploy) use
