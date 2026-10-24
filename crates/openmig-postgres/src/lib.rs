@@ -5,13 +5,16 @@
 //! * [`PostgresEngine`]: the [`Engine`] implementation.
 
 mod conn;
+pub mod decode;
 pub mod diff;
+pub mod encode;
 mod history;
 mod inspect;
 pub mod model;
 pub mod restrict;
 mod session;
 mod settings;
+pub mod spec;
 
 pub use diff::Change;
 pub use model::Database;
@@ -36,20 +39,20 @@ impl Engine for PostgresEngine {
     type Change = Change;
     type Session = PgSession;
 
-    fn schema_spec(_settings: &PgSettings) -> SchemaSpec {
-        unimplemented!("postgres schema spec")
+    fn schema_spec(settings: &PgSettings) -> SchemaSpec {
+        spec::schema_spec(settings)
     }
 
-    fn decode(_doc: &Document, _settings: &PgSettings) -> Result<Desired<Database>, Error> {
-        unimplemented!("postgres decode")
+    fn decode(doc: &Document, settings: &PgSettings) -> Result<Desired<Database>, Error> {
+        decode::decode(doc, settings)
     }
 
     fn encode(
-        _model: &Database,
-        _settings: &PgSettings,
-        _options: &EncodeOptions,
+        model: &Database,
+        settings: &PgSettings,
+        options: &EncodeOptions,
     ) -> Vec<EncodedFile> {
-        unimplemented!("postgres encode")
+        encode::encode(model, settings, options)
     }
 
     fn restrict(model: &mut Database, scope: &Scope) {

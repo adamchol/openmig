@@ -22,6 +22,8 @@ syntax. This document is the reference for both engines. Engine-specific blocks 
   database, e.g. `database "dialo" { name = var.dialo_db }` or several overloads of one function.
   For a qualified block, `name` replaces only the object name; `schema = schema.x` (PostgreSQL) /
   `database = database.x` (ClickHouse) replaces the namespace. Use these for names containing dots.
+  Nested blocks (`column`, `index`, constraints, ...) accept `name` too, which is how `for_each`
+  instances get distinct names.
 
 ## References
 
@@ -104,15 +106,41 @@ locals {
 
 | Attribute | Applies to | Meaning |
 |---|---|---|
-| `comment` | most objects | Object comment (`COMMENT ON`, ClickHouse `COMMENT`) |
+| `comment` | most objects | Object comment (`COMMENT ON`, ClickHouse `COMMENT`). `""` is no comment. |
 | `depends_on` | most objects | Extra ordering dependencies: list of references. Rarely needed; dependencies are normally discovered automatically. |
-| `renamed_from` | tables, columns (P0); other objects (P1) | Previous name. When the old object exists and the new one does not, the plan renames instead of drop + create. Ignored once the old name is gone, so it can stay in the schema until convenient to remove. For tables it may be qualified (`"app.people"`) to also move schemas. |
+| `renamed_from` | tables, columns (P0); schemas, views, materialized views, sequences, enums, composites, domains, indexes (P1) | Previous name. When the old object exists and the new one does not, the plan renames instead of drop + create. Ignored once the old name is gone, so it can stay in the schema until convenient to remove. For schema objects it may be qualified (`"app.people"`) to also move schemas; unqualified, the old object is in the same schema. |
 
 ---
 
 ## PostgreSQL
 
 Supported servers: PostgreSQL 14–18. Default schema: `public` (setting `default_schema`).
+
+**Schemas.** The default schema and `public` are always part of the schema, and so is every
+schema an object's name uses; a `schema` block is only needed for an empty schema or to set
+attributes. `public` comes with what every new database gives it: the comment `standard public
+schema` and `USAGE` for `PUBLIC` (none with `public_defaults = "revoke"`); `comment = ""` removes
+the comment, a `revoke` block the privilege. On PostgreSQL 14 `public` also grants `CREATE` to
+`PUBLIC`, which a schema without a matching `grant` revokes. System schemas (`pg_*`,
+`information_schema`) cannot be declared.
+
+**Types.** Builtin types are normalized to the names PostgreSQL prints: `int`, `int4` and
+`integer` are `integer`; `int8`/`bigint`, `int2`/`smallint`, `float8`/`float`/`double_precision`,
+`float4`/`real`, `bool`/`boolean`, `decimal`/`numeric` (`numeric(10)` = `numeric(10,0)`),
+`varchar`/`character_varying`, `char`/`character` (`char` = `character(1)`), `timestamp`,
+`timestamptz`, `time`, `timetz` (with an optional precision: `timestamptz(3)`), `varbit`, `bit`
+(`bit` = `bit(1)`), `float(p)`. Other identifiers and calls are kept (lower-cased), strings
+verbatim. A reference to an `enum`, `composite`, `domain`, `table` or `view` becomes the
+qualified name, quoted where PostgreSQL would quote it (`app."user"`). Function argument and
+result types drop modifiers, as PostgreSQL does (`varchar(10)` is `character varying`).
+
+**Literals.** `default` values: a string becomes a literal cast to the column type without
+modifiers, as PostgreSQL prints it (`"active"` on an `enum.app.status` column is
+`'active'::app.status`, `"x"` on `varchar(10)` is `'x'::character varying`); numbers and bools are
+written as is; `sql("...")` is raw SQL.
+
+**Collations** (`collate`): a name, quoted as an identifier where needed (`"C"` is `COLLATE "C"`),
+or raw SQL with `sql("...")` for a qualified collation (`sql("public.my_coll")`).
 
 ### `extension "name"`
 
@@ -141,26 +169,35 @@ Supported servers: PostgreSQL 14–18. Default schema: `public` (setting `defaul
 | `index "name" {}` | block | Label optional (PostgreSQL names unlabelled indexes). |
 | `policy "name" {}` | block | Row-level security policy on this table. |
 | `trigger "name" {}` | block | Trigger on this table. |
-| `rls` | bool or `{ enabled = bool, force = bool }` | `true` = ENABLE ROW LEVEL SECURITY; `force` = FORCE. |
-| `replica_identity` | `DEFAULT`, `FULL`, `NOTHING` or `index.<name>` | |
+| `exclude "name" {}` | block | P1, exclusion constraint. |
+| `rls` | bool or `{ enabled = bool, force = bool }` | `true` = ENABLE ROW LEVEL SECURITY; `force` = FORCE. In the object form `enabled` defaults to true. |
+| `replica_identity` | `DEFAULT`, `FULL`, `NOTHING`, `index.<name>` or an index name string | A string names an index, e.g. the primary key's `"users_pkey"`. |
 | `unlogged` | bool | P1 |
 | `storage_params` | object | P1, `WITH (fillfactor = 70)` |
+| `partition_by` | string | P1, `PARTITION BY` clause: `"RANGE (created_at)"`. |
+| `partition_of`, `partition_bound` | table ref, string | P1, a partition: `partition_of = table.app.events`, `partition_bound = "FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')"` or `"DEFAULT"`. Columns are declared as in the parent. |
+| `inherits` | list of table refs | P1, `INHERITS (...)`. Inherited columns are declared too. |
 | `comment`, `renamed_from`, `depends_on` | | |
 
 #### `column "name"`
 
 | Attribute | Type | Notes |
 |---|---|---|
-| `type` | type | Required. Identifier (`text`, `bigint`, `timestamptz`, `double_precision` = `double precision`, `character_varying` = `character varying`), call (`varchar(255)`, `numeric(10, 2)`, `timestamp(3)`), string (`"text[]"`, `"public.citext"`), or a reference to `enum.*`, `domain.*`, `composite.*`, `table.*` (row type). Underscores in identifier types become spaces. |
-| `null` | bool | Default `true` (nullable), as in SQL. Primary-key columns are NOT NULL automatically. |
-| `default` | literal or `sql()` | `default = 0`, `default = "active"` (string literal), `default = sql("now()")`. |
-| `identity` | `BY_DEFAULT`, `ALWAYS`, or `{ generated = ALWAYS, start = 1, increment = 1, min = 1, max = 100, cache = 1, cycle = false }` | Identity column. |
+| `type` | type | Required. Identifier (`text`, `bigint`, `timestamptz`, `double_precision` = `double precision`, `character_varying` = `character varying`), call (`varchar(255)`, `numeric(10, 2)`, `timestamp(3)`), string (`"text[]"`, `"public.citext"`), or a reference to `enum.*`, `domain.*`, `composite.*`, `table.*` (row type). See **Types** above. |
+| `null` | bool | Default `true` (nullable), as in SQL. Primary-key, identity and serial columns are NOT NULL automatically (`null = true` is an error for identity and serial columns). |
+| `default` | literal or `sql()` | `default = 0`, `default = "active"` (string literal), `default = sql("now()")`. At most one of `default`, `identity` and `generated`. |
+| `identity` | `BY_DEFAULT`, `ALWAYS`, or `{ generated = ALWAYS, start = 1, increment = 1, min = 1, max = 100, cache = 1, cycle = false }` | Identity column. In the object form `generated` defaults to `BY_DEFAULT`; omitted parameters take PostgreSQL's defaults for the column type (descending sequences start at their maximum, -1). |
 | `generated` | string | `GENERATED ALWAYS AS (expr) STORED`. P1: `{ expr = "...", virtual = true }` on PostgreSQL 18. |
-| `collate` | string | `"C"`, `"en_US"`. |
+| `collate` | string | `"C"`, `"en_US"`; see **Collations**. |
+| `storage` | `PLAIN`, `EXTERNAL`, `EXTENDED`, `MAIN` | P1, `SET STORAGE` when not the type's default. |
+| `compression` | identifier or string | P1, `pglz` or `lz4`. |
 | `comment`, `renamed_from` | | |
 
-`serial`, `bigserial` and `smallserial` are accepted as types: they become an integer column with an
-owned sequence and a `nextval` default, exactly like PostgreSQL.
+`serial`, `bigserial` and `smallserial` (and `serial4`, `serial8`, `serial2`) are accepted as types:
+they become an integer column with an owned sequence `<table>_<column>_seq` (named, shortened and
+de-duplicated like PostgreSQL does) and a `nextval('<schema>.<sequence>'::regclass)` default. The
+sequence has no block and cannot be referenced; to grant privileges on it, declare the `sequence`
+with `owned_by`, give the column its integer type and write the `nextval` default.
 
 #### `primary_key`
 
@@ -168,7 +205,11 @@ owned sequence and a `nextval` default, exactly like PostgreSQL.
 |---|---|---|
 | `columns` | list of column refs/strings | Required. |
 | `include` | list | P1 |
+| `deferrable`, `initially_deferred` | bool | |
+| `with` | object | P1, storage parameters of the index. |
 | `comment` | string | |
+
+The default name is `<table>_pkey`, shortened to 63 bytes like PostgreSQL does.
 
 #### `foreign_key "name"`
 
@@ -179,17 +220,28 @@ owned sequence and a `nextval` default, exactly like PostgreSQL.
 | `on_delete`, `on_update` | `NO_ACTION` (default), `RESTRICT`, `CASCADE`, `SET_NULL`, `SET_DEFAULT` | |
 | `deferrable` | bool | |
 | `initially_deferred` | bool | |
-| `match` | `SIMPLE` (default), `FULL` | P1 |
+| `match` | `SIMPLE` (default), `FULL`, `PARTIAL` | P1 |
+| `not_valid` | bool | P1, added `NOT VALID` and not validated. |
+| `not_enforced` | bool | P1, `NOT ENFORCED` (PostgreSQL 18). |
 | `comment` | string | |
+
+The referenced table must be declared (references are resolved like any other reference).
 
 #### `unique "name"`
 
 `columns` (required), `nulls_distinct` (bool, default true; PostgreSQL 15+), `include` (P1),
-`deferrable`, `initially_deferred`, `comment`.
+`deferrable`, `initially_deferred`, `with` (P1, storage parameters), `comment`.
 
 #### `check "name"`
 
-`expr` (required, SQL), `no_inherit` (bool), `comment`.
+`expr` (required, SQL), `no_inherit` (bool), `not_valid` (bool, P1), `not_enforced` (bool, P1,
+PostgreSQL 18), `comment`.
+
+#### `exclude "name"` (P1)
+
+`using` (access method, default `btree`), `key { ... }` blocks as for indexes plus `operator`
+(required, e.g. `"="`, `"&&"`), `where`, `include`, `deferrable`, `initially_deferred`, `with`,
+`comment`.
 
 #### `index "name"`
 
@@ -203,18 +255,28 @@ owned sequence and a `nextval` default, exactly like PostgreSQL.
 | `include` | list | Covering columns. |
 | `nulls_distinct` | bool | PostgreSQL 15+. |
 | `with` | object | P1, storage parameters. |
-| `comment` | string | |
+| `comment`, `renamed_from` | string | |
+
+An unlabelled index gets the name PostgreSQL would give it: `<table>_<key>[_<key>...]_idx`, where a
+column key is the column name and an expression key is the function name of a call
+(`lower(email)` gives `lower`), the column of a column or cast (`email::text` gives `email`), and
+`expr` otherwise; names are shortened to 63 bytes and made unique with a number
+(`users_email_idx1`) among the relations of the schema. Label indexes on more complex expressions.
 
 With `concurrent_indexes = true` (setting), indexes added to or dropped from existing tables are
 built with `CONCURRENTLY` and the migration becomes `no-transaction`.
 
 #### `policy "name"` (nested in a table, or top-level with `on`)
 
+Top-level `policy` and `trigger` blocks are labelled by name, and labels are unique per block kind:
+when two top-level triggers (or policies) on different relations share a name, give them distinct
+labels and set `name`.
+
 | Attribute | Type | Notes |
 |---|---|---|
 | `on` | table ref | Only for top-level policies. |
 | `for` | `ALL` (default), `SELECT`, `INSERT`, `UPDATE`, `DELETE` | |
-| `to` | list of role refs, role names or `PUBLIC`, `CURRENT_USER`, `SESSION_USER`, `CURRENT_ROLE` | Default `[PUBLIC]`. |
+| `to` | list of role refs, role names or `PUBLIC`, `CURRENT_USER`, `SESSION_USER`, `CURRENT_ROLE` | Default `[PUBLIC]`. Bare identifiers other than these keywords are errors: write `role.web` or `"web"`. |
 | `as` | `PERMISSIVE` (default), `RESTRICTIVE` | |
 | `using` | string | |
 | `check` | string | `WITH CHECK`. |
@@ -229,9 +291,11 @@ built with `CONCURRENTLY` and the migration becomes `no-transaction`.
 | `update_of` | list of column refs/strings | `UPDATE OF ...`; implies `UPDATE`. |
 | `for` | `ROW` or `STATEMENT` | Required. |
 | `when` | string | `WHEN (...)`. |
-| `execute` | function ref | Required. |
+| `execute` | function ref or `"schema.name"` | Required. A string names a function outside the schema (`"pg_catalog.tsvector_update_trigger"`). |
 | `args` | list of strings | Trigger function arguments. |
-| `constraint`, `deferrable`, `initially_deferred`, `referencing { old_table, new_table }`, `enabled` | | P1 |
+| `constraint` | bool | P1, `CREATE CONSTRAINT TRIGGER`; then also `deferrable`, `initially_deferred` and `from` (table ref). |
+| `referencing` | `{ old_table = "...", new_table = "..." }` | P1, transition tables. |
+| `enabled` | bool, `ORIGIN`, `REPLICA`, `ALWAYS` or `DISABLED` | P1, default `true` (`ORIGIN`); `false` = `DISABLED`. |
 | `comment` | string | |
 
 ### `view "schema.name"`
@@ -242,11 +306,14 @@ built with `CONCURRENTLY` and the migration becomes `no-transaction`.
 | `security_invoker` | bool | PostgreSQL 15+. |
 | `security_barrier` | bool | |
 | `check_option` | `LOCAL`, `CASCADED` | |
-| `column "name" { comment = "..." }` | block | Only for column comments. |
-| `comment`, `depends_on` | | |
+| `column "name" { comment = "..." }` | block | Only for column comments (column privileges are granted with `grant { columns = [...] }`). |
+| `comment`, `depends_on`, `renamed_from` | | |
 
-`materialized_view "schema.name"` (P1): `as`, `with_data` (bool, default true), nested `index`,
-`comment`.
+Leading and trailing whitespace and a trailing `;` of `as` are dropped. Triggers on views are
+top-level `trigger` blocks with `on = view.<...>`.
+
+`materialized_view "schema.name"` (P1): `as`, `with_data` (bool, default true), `storage_params`,
+nested `index` (with column names as strings) and `column` (comments), `comment`.
 
 ### `function "schema.name"`
 
@@ -257,17 +324,20 @@ built with `CONCURRENTLY` and the migration becomes `no-transaction`.
 | `setof` | bool | `RETURNS SETOF`. |
 | `returns_table { column "x" { type = ... } }` | block | `RETURNS TABLE (...)`. |
 | `language` | `sql`, `plpgsql`, or any identifier | Required. |
-| `body` | string | Required. Written with a dollar quote that does not occur in the body. |
+| `body` | string | Required. Written with a dollar quote that does not occur in the body. A `sql` body starting with `RETURN` or `BEGIN ATOMIC` is a SQL-standard body, parsed when the function is created. |
 | `volatility` | `VOLATILE` (default), `STABLE`, `IMMUTABLE` | |
 | `strict` | bool | `RETURNS NULL ON NULL INPUT`. |
 | `security` | `INVOKER` (default), `DEFINER` | |
 | `leakproof` | bool | |
 | `parallel` | `UNSAFE` (default), `RESTRICTED`, `SAFE` | |
-| `cost`, `rows` | number | |
-| `set` | object | `SET name = value` per entry, e.g. `{ search_path = "pg_catalog, public" }`. |
+| `cost`, `rows` | number | Defaults: cost 100 (1 for `c` and `internal`), rows 1000 for set-returning functions, else 0. |
+| `window` | bool | P1, `WINDOW`. |
+| `set` | object | `SET name = value` per entry, e.g. `{ search_path = "pg_catalog, public" }`. Values are the text PostgreSQL stores. |
 | `name`, `comment`, `depends_on` | | |
 
-Identity of a function is `(schema, name, input argument types)`. Overloads use distinct labels and
+Without `returns` and `returns_table`, the result is the type of a single `OUT`/`INOUT` argument
+or `record` for several, as in PostgreSQL. Identity of a function is `(schema, name, input
+argument types)`; two blocks with the same identity are an error. Overloads use distinct labels and
 the same `name`.
 
 ### `procedure "schema.name"`
@@ -277,8 +347,8 @@ the same `name`.
 ### `event_trigger "name"`
 
 `on` (`ddl_command_start`, `ddl_command_end`, `sql_drop`, `table_rewrite`, `login`), `tags` (list of
-strings, e.g. `["CREATE TABLE"]`), `execute` (function ref), `enabled` (bool, default true),
-`comment`.
+strings, e.g. `["CREATE TABLE"]`), `execute` (function ref), `enabled` (bool or `ORIGIN`,
+`REPLICA`, `ALWAYS`, `DISABLED`; default true), `comment`.
 
 ### `enum "schema.name"`
 
@@ -291,14 +361,15 @@ in the declared position. Removing or reordering values is an unsupported change
 
 ### `domain "schema.name"`
 
-`type` (required), `null` (bool, default true), `default`, `collate`, `check "name" { expr = "..." }`
-(repeated), `comment`.
+`type` (required), `null` (bool, default true), `default`, `collate`, `check "name" { expr = "...",
+not_valid = bool, comment = "..." }` (repeated), `comment`.
 
 ### `sequence "schema.name"`
 
-`type` (`smallint`, `integer`, `bigint`), `start`, `increment`, `min`, `max`, `cache`, `cycle`,
-`owned_by` (column ref), `comment`. Sequences backing identity columns are part of the column and are
-not declared. Current values are never compared.
+`type` (`smallint`, `integer`, `bigint`; default `bigint`), `start`, `increment`, `min`, `max`,
+`cache`, `cycle`, `owned_by` (column ref), `comment`. Omitted parameters take PostgreSQL's defaults
+for the type and direction. Sequences backing identity and serial columns are part of the column and
+are not declared. Current values are never compared.
 
 ### `role "name"`
 
@@ -308,7 +379,7 @@ not declared. Current values are never compared.
 | `superuser`, `createdb`, `createrole`, `inherit` (default true), `replication`, `bypassrls` | bool | |
 | `connection_limit` | number | Default -1. |
 | `valid_until` | string | Timestamp, e.g. `"2027-01-01T00:00:00Z"`, or `"infinity"`. |
-| `member_of` | list of role refs or names | Role memberships. |
+| `member_of` | list of role refs or names, or `{ role = ..., admin = bool, inherit = bool, set = bool }` | Role memberships. Defaults: `admin = false`, `set = true`, `inherit` = the member's own `inherit` (as `GRANT` does on PostgreSQL 16+). |
 | `comment` | string | |
 
 Passwords are never part of the schema. Roles are cluster-wide: OpenMig manages them only with
@@ -335,14 +406,21 @@ revoke {
 
 `on` accepts references to schemas, tables, views, materialized views, sequences, functions,
 procedures, domains, enums and composites (types). Privileges: `SELECT`, `INSERT`, `UPDATE`, `DELETE`,
-`TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN` (17+), `USAGE`, `CREATE`, `EXECUTE`, `ALL`.
+`TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN` (17+), `USAGE`, `CREATE`, `EXECUTE`, `ALL`. A
+privilege that does not apply to an object is an error. `ALL` stands for every privilege of the
+object's kind: tables, views and materialized views `SELECT` ... `MAINTAIN` (`MAINTAIN` is left out
+on servers before 17), columns `SELECT, INSERT, UPDATE, REFERENCES`, sequences `USAGE, SELECT,
+UPDATE`, schemas `USAGE, CREATE`, routines `EXECUTE`, types `USAGE`. `columns` (grants only) names
+columns of tables, views or materialized views. Grantees are role references, role names and
+`PUBLIC`; roles that are named but not declared are created (`NOLOGIN`) in scratch databases only.
 
 **Semantics.** For every object, the desired privileges are PostgreSQL's built-in defaults for that
 kind of object (for example `EXECUTE` for `PUBLIC` on functions and procedures, `USAGE` for `PUBLIC`
 on types), minus `revoke` blocks, plus `grant` blocks. The owner's own privileges are never compared.
 Only *managed grantees* are compared: `PUBLIC`, roles declared in the schema, and every role when
 `manage_roles = true` (minus excluded roles). Setting `public_defaults = "revoke"` starts from no
-`PUBLIC` privileges instead of PostgreSQL's defaults.
+`PUBLIC` privileges instead of PostgreSQL's defaults. Revokes never remove what a `grant` block
+grants; granting a privilege both with and without `with_grant_option` keeps the grant option.
 
 ### `data "schema.table"`
 
@@ -350,14 +428,17 @@ Only *managed grantees* are compared: `PUBLIC`, roles declared in the schema, an
 data "app.statuses" {
   rows = [
     { id = 1, name = "active" },
-    { id = 2, name = "disabled", created_at = sql("now()") },
+    { id = 2, name = "disabled", note = null },
   ]
   key  = ["id"]          # default: the table's primary key
   mode = sync            # sync | insert; default from the `data` setting
 }
 ```
 
-Rows are compared by key. `sync` makes the table contain exactly the declared rows (INSERT, UPDATE,
+The table must be declared; without a primary key `key` is required. Values are strings, numbers,
+bools or `null`; `sql()` is not supported in rows. Every row has the key columns, and two rows with
+the same key are an error, also across several `data` blocks of one table (which must agree on
+`key` and `mode`). Rows are compared by key. `sync` makes the table contain exactly the declared rows (INSERT, UPDATE,
 DELETE); `insert` only inserts missing keys. Columns not mentioned in any row keep their values.
 Values are compared in the database's own text form, so `1`, `1.0` and `"1"` written for a numeric
 column are equal.

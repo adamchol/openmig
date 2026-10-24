@@ -1,0 +1,14 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × table app.t is declared more than once
+   ╭─[schema.hcl:2:1]
+ 1 │ 
+ 2 │ table "app.t" {
+   · ──────┬──────┬
+   ·       │      ╰── first declared here
+   ·       ╰── declared again here
+ 3 │   for_each = ["a", "b"]
+   ╰────
+  help: blocks created by `for_each` need distinct names: set `name` from `each`

@@ -1,0 +1,63 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × `data` for `app.t` needs `key`: the table has no primary key
+    ╭─[schema.hcl:24:1]
+ 23 │ }
+ 24 │ data "app.t" {
+    · ────────────
+ 25 │   rows = [{ id = 1 }]
+    ╰────
+
+  × row 1, `at`: sql() is not supported in data rows; write the value
+    ╭─[schema.hcl:28:10]
+ 27 │     data "app.k" {
+ 28 │ ╭─▶   rows = [
+ 29 │ │       { id = 1, at = sql("now()") },
+ 30 │ │       { id = 2, y = 1 },
+ 31 │ │       { id = 3 },
+ 32 │ │       { id = 3, x = 1 },
+ 33 │ │       { x = 4 },
+ 34 │ ╰─▶   ]
+ 35 │     }
+    ╰────
+
+  × row 2: unknown column `y` in `app.k`
+    ╭─[schema.hcl:28:10]
+ 27 │     data "app.k" {
+ 28 │ ╭─▶   rows = [
+ 29 │ │       { id = 1, at = sql("now()") },
+ 30 │ │       { id = 2, y = 1 },
+ 31 │ │       { id = 3 },
+ 32 │ │       { id = 3, x = 1 },
+ 33 │ │       { x = 4 },
+ 34 │ ╰─▶   ]
+ 35 │     }
+    ╰────
+
+  × row 4: duplicate row in `app.k`: id = 3
+    ╭─[schema.hcl:28:10]
+ 27 │     data "app.k" {
+ 28 │ ╭─▶   rows = [
+ 29 │ │       { id = 1, at = sql("now()") },
+ 30 │ │       { id = 2, y = 1 },
+ 31 │ │       { id = 3 },
+ 32 │ │       { id = 3, x = 1 },
+ 33 │ │       { x = 4 },
+ 34 │ ╰─▶   ]
+ 35 │     }
+    ╰────
+
+  × row 5 of `app.k` has no value for the key column(s) `id`
+    ╭─[schema.hcl:28:10]
+ 27 │     data "app.k" {
+ 28 │ ╭─▶   rows = [
+ 29 │ │       { id = 1, at = sql("now()") },
+ 30 │ │       { id = 2, y = 1 },
+ 31 │ │       { id = 3 },
+ 32 │ │       { id = 3, x = 1 },
+ 33 │ │       { x = 4 },
+ 34 │ ╰─▶   ]
+ 35 │     }
+    ╰────

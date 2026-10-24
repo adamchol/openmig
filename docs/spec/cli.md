@@ -73,6 +73,11 @@ newest one there). Exit 4 when the schema has changes that no migration contains
 `--format hcl|sql`, `--split-by none|schema|kind`, `-o, --output DIR` (write files instead of
 printing).
 
+HCL output decodes back to the inspected schema. Files: `schema.hcl` (`none`); one `<schema>.hcl`
+per schema plus `cluster.hcl` for roles, extensions and event triggers (`schema`, PostgreSQL); one
+file per block kind, e.g. `tables.hcl`, `grants.hcl` (`kind`). Owners, dependencies and the server
+version are not written; grants are written as the difference to the default privileges.
+
 ### `diff`
 
 `--from` / `--to` take `schema` (the configured schema), `migrations` (the replayed migration

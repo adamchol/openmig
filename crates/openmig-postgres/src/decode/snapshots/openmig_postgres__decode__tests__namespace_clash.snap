@@ -1,0 +1,18 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × index app.users.users uses the relation name `users` already used by table app.users in schema `app`
+   ╭─[schema.hcl:2:1]
+ 1 │ 
+ 2 │ table "app.users" {
+   · ────────┬────────
+   ·         ╰── first used here
+ 3 │   column "id" {
+   ╰────
+   ╭─[schema.hcl:6:3]
+ 5 │   }
+ 6 │   index "users" {
+   ·   ─────────────
+ 7 │     columns = ["id"]
+   ╰────
