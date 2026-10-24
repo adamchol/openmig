@@ -1,0 +1,32 @@
+# Applies pending migrations before the application syncs (Argo CD hook, sync wave -1).
+# The image contains the migration files (see `openmig.lib.mkMigrationsImage` or
+# deploy/docker/Dockerfile); tag it with the commit so every change produces a new Job.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: app-db-migrations
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: openmig
+          image: ghcr.io/acme/app-migrations:COMMIT
+          env:
+            - name: OPENMIG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-db
+                  key: url
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }

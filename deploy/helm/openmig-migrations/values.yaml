@@ -1,0 +1,33 @@
+# Image containing the openmig binary and the migration directory at /migrations.
+image:
+  repository: ghcr.io/acme/app-migrations
+  tag: ""
+  pullPolicy: IfNotPresent
+
+engine: postgres
+
+# Secret holding the database URL.
+database:
+  secretName: app-db
+  secretKey: url
+
+# Extra arguments for `openmig deploy`, e.g. ["--baseline", "20260216163954"].
+extraArgs: []
+waitForDb: 2m
+
+job:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  # Run as an Argo CD Sync hook before the rest of the application.
+  argocdHook: true
+  syncWave: "-1"
+  # Run as a Helm pre-install/pre-upgrade hook instead.
+  helmHook: false
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 256Mi }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534

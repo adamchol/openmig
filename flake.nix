@@ -12,10 +12,27 @@
     systems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
   in {
-    packages = forAllSystems (pkgs: {
+    packages = forAllSystems (pkgs: let
       openmig = pkgs.callPackage ./nix/package.nix {};
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.openmig;
+    in {
+      inherit openmig;
+      image = (pkgs.callPackage ./nix/image.nix {inherit openmig;}).base;
+      default = openmig;
     });
+
+    lib = {
+      # Build an OCI image that deploys a migration directory:
+      #   openmig.lib.mkMigrationsImage {
+      #     inherit pkgs;
+      #     name = "ghcr.io/acme/app-migrations";
+      #     engine = "postgres";
+      #     migrations = ./db/migrations;
+      #   }
+      mkMigrationsImage = {pkgs, ...} @ args:
+        (pkgs.callPackage ./nix/image.nix {
+          openmig = self.packages.${pkgs.stdenv.hostPlatform.system}.openmig;
+        }).mkMigrationsImage (builtins.removeAttrs args ["pkgs"]);
+    };
 
     checks = forAllSystems (pkgs: {
       inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) openmig;

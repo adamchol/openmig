@@ -14,7 +14,7 @@ openmig [GLOBAL FLAGS] <COMMAND> [FLAGS]
 | `--url URL` | `OPENMIG_URL` | Override the database URL. |
 | `--schema PATH` | | Additional schema file/directory (repeatable), e.g. test-only objects. |
 | `--var NAME=VALUE` | | Schema variable (repeatable). |
-| `--engine postgres\|clickhouse` | | Config-less mode (with `--migrations`). |
+| `--engine postgres\|clickhouse` | `OPENMIG_ENGINE` | Config-less mode (with `--migrations`); used only when no `openmig.toml` is found. |
 | `--migrations DIR` | | Config-less mode, or override the migration directory. |
 | `--log-format text\|json` | `OPENMIG_LOG_FORMAT` | Log format. |
 | `--json` | | Machine-readable command output. |

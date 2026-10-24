@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrations{{ if not (or .Values.job.argocdHook .Values.job.helmHook) }}-{{ .Values.image.tag | default .Chart.AppVersion | trunc 12 }}{{ end }}
+  labels:
+    app.kubernetes.io/name: openmig-migrations
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    {{- if .Values.job.argocdHook }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: {{ .Values.job.syncWave | quote }}
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    {{- end }}
+    {{- if .Values.job.helmHook }}
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    {{- end }}
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openmig-migrations
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: openmig
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - deploy
+            - --engine
+            - {{ .Values.engine | quote }}
+            - --migrations
+            - /migrations
+            - --wait-for-db
+            - {{ .Values.waitForDb | quote }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: OPENMIG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.secretName }}
+                  key: {{ .Values.database.secretKey }}
+            - name: OPENMIG_LOG_FORMAT
+              value: json
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

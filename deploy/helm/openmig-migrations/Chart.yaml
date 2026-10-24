@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openmig-migrations
+description: Apply OpenMig migrations to a database as a Kubernetes Job
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

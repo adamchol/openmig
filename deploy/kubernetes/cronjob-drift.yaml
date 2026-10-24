@@ -1,0 +1,26 @@
+# Optional: alert when the production database drifts from its migrations or has pending files.
+# `status --drift` needs a scratch server, so this image must contain PostgreSQL or ClickHouse
+# binaries (e.g. built from the `openmig-full` package).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: app-db-drift
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: openmig
+              image: ghcr.io/acme/app-migrations:COMMIT
+              args: ["status", "--engine", "postgres", "--migrations", "/migrations", "--fail-on-pending"]
+              env:
+                - name: OPENMIG_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-db
+                      key: url

@@ -49,8 +49,8 @@ pub struct GlobalArgs {
     /// Schema variable (repeatable).
     #[arg(long = "var", global = true, value_name = "NAME=VALUE", value_parser = parse_var)]
     pub vars: Vec<(String, String)>,
-    /// Engine for config-less mode.
-    #[arg(long, global = true, value_enum)]
+    /// Engine for config-less mode (used when no openmig.toml is found).
+    #[arg(long, global = true, value_enum, env = "OPENMIG_ENGINE")]
     pub engine: Option<EngineKind>,
     /// Migration directory (config-less mode, or override).
     #[arg(long, global = true, value_name = "DIR")]
