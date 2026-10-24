@@ -94,7 +94,7 @@ pub fn select<'c>(
 }
 
 /// Everything a flow needs about one database, with CLI overrides applied.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context<E: Engine> {
     pub name: String,
     pub config: DatabaseConfig,
@@ -103,6 +103,20 @@ pub struct Context<E: Engine> {
     pub migrations: Option<PathBuf>,
     url_override: Option<String>,
     pub vars: IndexMap<String, VarValue>,
+}
+
+impl<E: Engine> Clone for Context<E> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            config: self.config.clone(),
+            settings: self.settings.clone(),
+            schema_paths: self.schema_paths.clone(),
+            migrations: self.migrations.clone(),
+            url_override: self.url_override.clone(),
+            vars: self.vars.clone(),
+        }
+    }
 }
 
 impl<E: Engine> Context<E> {
