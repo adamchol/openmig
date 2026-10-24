@@ -97,29 +97,26 @@ pub async fn generate<E: Engine>(
 }
 
 /// Delete generated migration files that do not exist in `base`, so a branch carries exactly one
-/// generated migration. Hand-written files are kept.
-fn remove_unmerged_generated(dir: &Path, base: &str, ui: &dyn Ui) -> Result<(), Error> {
+/// generated migration. Hand-written files are kept. Returns the deleted files so an identical
+/// regenerated migration can keep its original name.
+fn remove_unmerged_generated(dir: &Path, base: &str) -> Result<Vec<MigrationFile>, Error> {
     if !dir.exists() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let in_base = git::files_in_ref(dir, base)?;
     let current = MigrationDir::load(dir)?;
-    let mut removed = 0;
-    for file in &current.files {
+    let mut removed = Vec::new();
+    for file in current.files {
         if file.directives.generated && !in_base.contains(&file.file_name) {
             std::fs::remove_file(&file.path)
                 .map_err(|e| Error::io(format!("removing {}", file.path.display()), e))?;
-            ui.info(&format!(
-                "removed unmerged generated migration {}",
-                file.file_name
-            ));
-            removed += 1;
+            removed.push(file);
         }
     }
-    if removed > 0 {
+    if !removed.is_empty() {
         MigrationDir::load(dir)?.write_sum()?;
     }
-    Ok(())
+    Ok(removed)
 }
 
 /// Lower-case, `[a-z0-9_]` only, no leading/trailing/double underscores.
