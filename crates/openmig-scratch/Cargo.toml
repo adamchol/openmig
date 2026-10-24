@@ -1,0 +1,22 @@
+[package]
+name = "openmig-scratch"
+description = "Throwaway PostgreSQL clusters and ClickHouse servers used by OpenMig to normalize schemas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+etcetera.workspace = true
+nix.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+which.workspace = true
+
+[lints]
+workspace = true

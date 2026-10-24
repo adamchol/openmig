@@ -1,0 +1,25 @@
+[package]
+name = "openmig-migrate"
+description = "Versioned migrations for OpenMig: migration directories, checksums, directives and the deploy executor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+openmig-core.workspace = true
+hex.workspace = true
+jiff.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

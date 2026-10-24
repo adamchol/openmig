@@ -1,0 +1,33 @@
+[package]
+name = "openmig-clickhouse"
+description = "ClickHouse engine for OpenMig"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+openmig-core.workspace = true
+openmig-hcl.workspace = true
+openmig-scratch.workspace = true
+indexmap.workspace = true
+percent-encoding.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+openmig-testkit.workspace = true
+insta.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

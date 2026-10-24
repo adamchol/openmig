@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+authors = ["Adam Cholewiński <adam@dialo.ai>"]
+repository = "https://github.com/dialohq/openmig"
+
+[workspace.dependencies]
+openmig-clickhouse = { path = "crates/openmig-clickhouse" }
+openmig-config = { path = "crates/openmig-config" }
+openmig-core = { path = "crates/openmig-core" }
+openmig-hcl = { path = "crates/openmig-hcl" }
+openmig-migrate = { path = "crates/openmig-migrate" }
+openmig-postgres = { path = "crates/openmig-postgres" }
+openmig-scratch = { path = "crates/openmig-scratch" }
+openmig-testkit = { path = "crates/openmig-testkit" }
+
+anyhow = "1"
+bytes = "1"
+clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
+dialoguer = { version = "0.12", default-features = false }
+etcetera = "0.11"
+futures-util = "0.3"
+globset = "0.4"
+hcl-edit = "0.9.8"
+hcl-primitives = "0.1"
+hex = "0.4"
+indexmap = { version = "2", features = ["serde"] }
+jiff = { version = "0.2", features = ["serde"] }
+libtest-mimic = "0.8"
+miette = { version = "7.6", features = ["fancy"] }
+nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
+notify = "8"
+notify-debouncer-full = "0.6"
+owo-colors = { version = "4", features = ["supports-colors"] }
+percent-encoding = "2"
+pretty_assertions = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.11"
+similar = "3"
+strsim = "0.11"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time", "process", "signal", "fs", "io-util", "sync", "net"] }
+tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
+tokio-postgres-rustls = "0.14"
+toml = "1.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+url = "2"
+which = "8"
+insta = { version = "1.49", features = ["yaml"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+large_enum_variant = "allow"
+result_large_err = "allow"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

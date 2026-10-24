@@ -1,0 +1,25 @@
+[package]
+name = "openmig-testkit"
+description = "Test support for OpenMig: shared scratch servers and golden convergence cases"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+openmig-core.workspace = true
+openmig-hcl.workspace = true
+openmig-scratch.workspace = true
+libtest-mimic.workspace = true
+pretty_assertions.workspace = true
+serde.workspace = true
+similar.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

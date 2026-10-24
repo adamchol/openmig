@@ -1,0 +1,46 @@
+[package]
+name = "openmig"
+description = "Declarative and versioned schema migrations for PostgreSQL and ClickHouse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "openmig"
+path = "src/main.rs"
+
+[dependencies]
+openmig-clickhouse.workspace = true
+openmig-config.workspace = true
+openmig-core.workspace = true
+openmig-hcl.workspace = true
+openmig-migrate.workspace = true
+openmig-postgres.workspace = true
+openmig-scratch.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+dialoguer.workspace = true
+jiff.workspace = true
+miette.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
+owo-colors.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+similar.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+openmig-testkit.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
