@@ -7,7 +7,7 @@ use crate::cli::GenerateArgs;
 use crate::context::Context;
 use crate::ui::Ui;
 use openmig_core::{Engine, Error, PlanMode, RenameSet, Session};
-use openmig_migrate::{MigrationDir, render_file};
+use openmig_migrate::{MigrationDir, MigrationFile, render_file};
 use std::path::Path;
 
 pub async fn generate<E: Engine>(
@@ -16,9 +16,10 @@ pub async fn generate<E: Engine>(
     ui: &dyn Ui,
 ) -> Result<u8, Error> {
     let dir_path = ctx.migrations_dir()?.clone();
-    if let Some(base) = &args.base {
-        remove_unmerged_generated(&dir_path, base, ui)?;
-    }
+    let removed = match &args.base {
+        Some(base) => remove_unmerged_generated(&dir_path, base)?,
+        None => Vec::new(),
+    };
     let mut dir = MigrationDir::load(&dir_path)?;
     dir.verify_sum()
         .map_err(|e| Error::Migrations(e.to_string()))?;
@@ -42,6 +43,9 @@ pub async fn generate<E: Engine>(
             PlanMode::Generate,
             false,
         )?;
+        for file in &removed {
+            ui.info(&format!("replacing unmerged generated migration {}", file.file_name));
+        }
         if plan.is_empty() {
             ui.info(&format!("{}: no changes", ctx.name));
             return Ok(0);
@@ -51,8 +55,13 @@ pub async fn generate<E: Engine>(
             print!("{content}");
             return Ok(0);
         }
-        let version = dir.next_version(jiff::Timestamp::now());
-        let path = dir.add(&version, &name, &content)?.path.clone();
+        let path = match removed.iter().find(|f| f.content == content) {
+            Some(same) => dir.add(&same.version, &same.name, &content)?.path.clone(),
+            None => {
+                let version = dir.next_version(jiff::Timestamp::now());
+                dir.add(&version, &name, &content)?.path.clone()
+            }
+        };
 
         scratch.reset().await?;
         openmig_migrate::replay::<E>(&mut scratch.session, &dir).await?;
