@@ -227,6 +227,21 @@ pub trait Engine: Sized + Send + Sync + 'static {
         ctx: &DiffContext<'_, Self>,
     ) -> Result<Plan, Error>;
 
+    /// Statement that sets the lock timeout for the rest of the current transaction
+    /// (PostgreSQL: `SET LOCAL lock_timeout = '5000ms'`). `None` when the engine has no such
+    /// setting.
+    fn lock_timeout_sql(timeout: Duration) -> Option<String> {
+        let _ = timeout;
+        None
+    }
+
+    /// Statement that sets the statement timeout for the rest of the current transaction or
+    /// session.
+    fn statement_timeout_sql(timeout: Duration) -> Option<String> {
+        let _ = timeout;
+        None
+    }
+
     /// The scratch server to start for this database.
     fn scratch_spec(settings: &Self::Settings, version: Option<u32>) -> openmig_scratch::Spec;
 
