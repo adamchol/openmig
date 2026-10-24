@@ -21,6 +21,7 @@ openmig-migrate.workspace = true
 openmig-postgres.workspace = true
 openmig-scratch.workspace = true
 anyhow.workspace = true
+indexmap.workspace = true
 clap.workspace = true
 dialoguer.workspace = true
 jiff.workspace = true

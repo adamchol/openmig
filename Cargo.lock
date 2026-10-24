@@ -1479,6 +1479,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dialoguer",
+ "indexmap",
  "jiff",
  "miette",
  "notify",
