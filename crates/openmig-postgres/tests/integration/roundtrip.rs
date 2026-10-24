@@ -201,7 +201,8 @@ async fn dialo_round_trip() {
         eprintln!("skipping: set OPENMIG_DIALO_MIGRATIONS to a migration directory");
         return;
     };
-    let _roles = ROLES.read().await;
+    // The migrations create cluster-wide roles, also replayed by `dialo_smoke`.
+    let _roles = ROLES.write().await;
     let Some(db) = TestDb::create("omt_dialo_rt").await else {
         return;
     };
