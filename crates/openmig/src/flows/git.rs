@@ -32,7 +32,12 @@ pub fn files_in_ref(dir: &Path, git_ref: &str) -> Result<BTreeSet<String>, Error
     let rel = relative_dir(dir)?;
     let listing = git(
         dir,
-        &["ls-tree", "--name-only", &format!("{git_ref}:{rel}")],
+        &[
+            "ls-tree",
+            "--full-tree",
+            "--name-only",
+            &format!("{git_ref}:{rel}"),
+        ],
     );
     match listing {
         Ok(out) => Ok(out.lines().map(str::to_owned).collect()),

@@ -44,7 +44,9 @@ async fn dispatch(
     ui: &dyn Ui,
 ) -> Result<u8, Error> {
     match engine {
-        EngineKind::Postgres => run_engine::<openmig_postgres::PostgresEngine>(db, cli, ui).await,
+        EngineKind::Postgres => {
+            Box::pin(run_engine::<openmig_postgres::PostgresEngine>(db, cli, ui)).await
+        }
         EngineKind::ClickHouse => Err(Error::Config(
             "the clickhouse engine is not available in this build yet".into(),
         )),
@@ -60,16 +62,16 @@ pub async fn run_engine<E: Engine>(
     let ctx = Context::<E>::new(db, &cli.global)?;
     let json = cli.global.json;
     match &cli.command {
-        Command::Sync(args) => sync::sync(&ctx, args, ui).await,
-        Command::Generate(args) => generate::generate(&ctx, args, ui).await,
-        Command::Check(args) => check::check(&ctx, args, ui).await,
-        Command::Deploy(args) => deploy::deploy(&ctx, args, ui, json).await,
-        Command::Status(args) => status::status(&ctx, args, ui, json).await,
+        Command::Sync(args) => Box::pin(sync::sync(&ctx, args, ui)).await,
+        Command::Generate(args) => Box::pin(generate::generate(&ctx, args, ui)).await,
+        Command::Check(args) => Box::pin(check::check(&ctx, args, ui)).await,
+        Command::Deploy(args) => Box::pin(deploy::deploy(&ctx, args, ui, json)).await,
+        Command::Status(args) => Box::pin(status::status(&ctx, args, ui, json)).await,
         Command::New(args) => files::new(&ctx, args, ui),
         Command::Rehash => files::rehash(&ctx, ui),
-        Command::Inspect(args) => inspect::inspect(&ctx, args, ui).await,
-        Command::Diff(args) => diff::diff(&ctx, args, ui).await,
-        Command::History(cmd) => history::history(&ctx, cmd, ui).await,
+        Command::Inspect(args) => Box::pin(inspect::inspect(&ctx, args, ui)).await,
+        Command::Diff(args) => Box::pin(diff::diff(&ctx, args, ui)).await,
+        Command::History(cmd) => Box::pin(history::history(&ctx, cmd, ui)).await,
     }
 }
 
