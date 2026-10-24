@@ -79,7 +79,7 @@ impl<E: Engine> Scratch<E> {
 /// Apply the desired schema to an empty scratch database and inspect it back: the desired state
 /// in the database's canonical form.
 pub async fn normalize<E: Engine>(
-    scratch: &mut Scratch<E>,
+    session: &mut E::Session,
     ctx: &Context<E>,
     desired: &Desired<E::Model>,
     scope: &Scope,
@@ -95,8 +95,8 @@ pub async fn normalize<E: Engine>(
     };
     let changes = E::diff(&empty, &desired.model, &dctx)?;
     let plan = E::plan(changes, &empty, &desired.model, &dctx)?;
-    apply_with_retry::<E>(&mut scratch.session, &plan, desired).await?;
-    scratch.session.inspect(scope).await
+    apply_with_retry::<E>(session, &plan, desired).await?;
+    session.inspect(scope).await
 }
 
 /// Apply a plan built from decoded HCL. Statements that fail because an object they reference

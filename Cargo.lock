@@ -1481,6 +1481,7 @@ dependencies = [
  "dialoguer",
  "indexmap",
  "jiff",
+ "libtest-mimic",
  "miette",
  "notify",
  "notify-debouncer-full",

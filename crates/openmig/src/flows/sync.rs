@@ -42,7 +42,7 @@ async fn sync_once<E: Engine>(
     );
 
     scratch.reset().await?;
-    let normalized = normalize(scratch, ctx, &desired, &scope).await?;
+    let normalized = normalize(&mut scratch.session, ctx, &desired, &scope).await?;
     let current = target.inspect(&scope).await?;
     let renames = resolve_renames::<E>(&current, &normalized, &desired.hints, ui, true);
     let plan = plan_between(

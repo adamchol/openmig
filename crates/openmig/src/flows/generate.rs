@@ -31,7 +31,7 @@ pub async fn generate<E: Engine>(
         openmig_migrate::replay::<E>(&mut scratch.session, &dir).await?;
         let current = scratch.session.inspect(&scope).await?;
         scratch.reset().await?;
-        let normalized = normalize(&mut scratch, ctx, &desired, &scope).await?;
+        let normalized = normalize(&mut scratch.session, ctx, &desired, &scope).await?;
         let renames = resolve_renames::<E>(&current, &normalized, &desired.hints, ui, true);
         let plan = plan_between(
             ctx,

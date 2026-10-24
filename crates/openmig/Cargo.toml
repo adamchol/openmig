@@ -40,8 +40,19 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 openmig-testkit.workspace = true
+libtest-mimic.workspace = true
 pretty_assertions.workspace = true
 tempfile.workspace = true
+
+[[test]]
+name = "golden_postgres"
+path = "tests/golden_postgres.rs"
+harness = false
+
+[[test]]
+name = "golden_clickhouse"
+path = "tests/golden_clickhouse.rs"
+harness = false
 
 [lints]
 workspace = true

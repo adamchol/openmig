@@ -125,7 +125,13 @@ async fn model_for<E: Engine>(
         Source::Schema | Source::Path(_) => {
             let scratch = scratch.expect("scratch started for schema");
             scratch.reset().await?;
-            normalize(scratch, ctx, desired.expect("desired loaded"), scope).await
+            normalize(
+                &mut scratch.session,
+                ctx,
+                desired.expect("desired loaded"),
+                scope,
+            )
+            .await
         }
     }
 }
