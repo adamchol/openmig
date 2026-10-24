@@ -35,7 +35,7 @@ pub struct GlobalArgs {
     #[arg(long, global = true, conflicts_with = "db")]
     pub all: bool,
     /// Override the database URL.
-    #[arg(long, global = true, value_name = "URL")]
+    #[arg(long, global = true, env = "OPENMIG_URL", value_name = "URL", hide_env_values = true)]
     pub url: Option<String>,
     /// Additional schema file or directory (repeatable).
     #[arg(long = "schema", global = true, value_name = "PATH")]

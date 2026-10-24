@@ -11,7 +11,7 @@ openmig [GLOBAL FLAGS] <COMMAND> [FLAGS]
 | `--config PATH` | `OPENMIG_CONFIG` | Config file (default: search upward for `openmig.toml`). |
 | `-d, --db NAME` | `OPENMIG_DB` | Database from the config. Optional when the config has one. |
 | `--all` | | Run for every database in the config. |
-| `--url URL` | | Override the database URL. |
+| `--url URL` | `OPENMIG_URL` | Override the database URL. |
 | `--schema PATH` | | Additional schema file/directory (repeatable), e.g. test-only objects. |
 | `--var NAME=VALUE` | | Schema variable (repeatable). |
 | `--engine postgres\|clickhouse` | | Config-less mode (with `--migrations`). |
