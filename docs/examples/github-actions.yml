@@ -1,0 +1,37 @@
+# Generates (or refreshes) one migration per pull request and fails the build when the schema and
+# the migrations disagree.
+name: migrations
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  migrations:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Generate migration
+        run: nix develop -c openmig generate --all --base origin/${{ github.base_ref }}
+
+      - name: Commit migration
+        run: |
+          if [ -n "$(git status --porcelain db/migrations)" ]; then
+            git config user.name "openmig"
+            git config user.email "openmig@users.noreply.github.com"
+            git add db/migrations
+            git commit -m "chore(db): generate migration"
+            git push
+          fi
+
+      - name: Check
+        run: nix develop -c openmig check --all --base origin/${{ github.base_ref }}
