@@ -34,7 +34,7 @@ pub use types::{Composite, CompositeField, Domain, DomainCheck, Enum, Sequence, 
 
 use openmig_core::ObjectRef;
 use openmig_core::sql::{Dialect, quote_ident};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// A schema-qualified name with raw (unquoted) parts.
@@ -95,6 +95,13 @@ pub struct Database {
     /// and `OWNED BY` links (see [`Sequence::owned_by`]). An index that implements a constraint
     /// is represented by the constraint.
     pub dependencies: Vec<Dependency>,
+    /// Major version of the server the model was inspected from (`0` for decoded models). The
+    /// planner uses the current side's version for version-dependent syntax.
+    pub server_major: u32,
+    /// Roles that grants and policies of a decoded schema name but that the schema does not
+    /// declare. They are created (`NOLOGIN`) in scratch databases only and never managed.
+    /// Always empty for inspected models.
+    pub external_roles: BTreeSet<String>,
 }
 
 /// A namespace and everything in it.
@@ -141,15 +148,19 @@ impl Schema {
     }
 }
 
-/// Rows of a data-managed table, in PostgreSQL's text form (`col::text`).
+/// Rows of a data-managed table, in PostgreSQL's text form (`col::text`). Inspection reads the
+/// key columns and the columns listed in [`openmig_core::DataTable::columns`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TableData {
     /// Columns whose values identify a row: the primary key, or every column when the table has
     /// none.
     pub key: Vec<String>,
-    /// Rows by the values of the key columns. Each row maps every non-generated column to its
-    /// value (`None` for NULL).
+    /// Rows by the values of the key columns. Each row maps the managed columns to their value
+    /// (`None` for NULL).
     pub rows: BTreeMap<Vec<Option<String>>, BTreeMap<String, Option<String>>>,
+    /// The `mode` of the declaring `data` block (decoded models only; `None` = configured
+    /// default). Inspection leaves it `None`; the diff takes the mode from the scope.
+    pub mode: Option<openmig_core::DataSync>,
 }
 
 /// `from` depends on `to`: `to` must exist before `from` is created, and `from` must be dropped

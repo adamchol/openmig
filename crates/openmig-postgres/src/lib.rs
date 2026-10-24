@@ -19,7 +19,7 @@ pub use session::{MIN_SERVER_VERSION, PgSession, SCRATCH_DATABASE};
 pub use settings::{PgSettings, PublicDefaults};
 
 use openmig_core::{
-    Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error, Plan,
+    DataTable, Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error, Plan,
     RenameCandidate, RenameHints, RenameSet, Scope, SessionPurpose,
 };
 use openmig_hcl::{Document, SchemaSpec};
@@ -60,11 +60,25 @@ impl Engine for PostgresEngine {
         model.roles.keys().cloned().collect()
     }
 
-    fn data_tables(model: &Database) -> Vec<Vec<String>> {
+    fn data_tables(model: &Database) -> Vec<DataTable> {
         model
             .data
-            .keys()
-            .map(|t| vec![t.schema.clone(), t.name.clone()])
+            .iter()
+            .map(|(t, data)| {
+                let mut columns: Vec<String> = data.key.clone();
+                for row in data.rows.values() {
+                    for c in row.keys() {
+                        if !columns.contains(c) {
+                            columns.push(c.clone());
+                        }
+                    }
+                }
+                DataTable {
+                    path: vec![t.schema.clone(), t.name.clone()],
+                    columns,
+                    mode: data.mode,
+                }
+            })
             .collect()
     }
 

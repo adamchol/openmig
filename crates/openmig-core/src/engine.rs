@@ -42,6 +42,27 @@ impl SchemaFilter {
     }
 }
 
+/// How the rows of a data-managed table are reconciled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DataSync {
+    /// The table contains exactly the declared rows (insert, update, delete).
+    Sync,
+    /// Missing declared rows are inserted; nothing is updated or deleted.
+    Insert,
+}
+
+/// A table whose rows are declared in the schema (`data` blocks).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataTable {
+    /// `[schema, table]` (PostgreSQL) or `[database, table]` (ClickHouse).
+    pub path: Vec<String>,
+    /// Columns that rows declare values for (key columns included). Only these are inspected
+    /// and compared; other columns keep whatever values they have.
+    pub columns: Vec<String>,
+    /// `None` when the `data` block does not choose; the flows fill in the configured default.
+    pub mode: Option<DataSync>,
+}
+
 /// What a session inspects and what a plan may touch.
 #[derive(Clone, Debug, Default)]
 pub struct Scope {
@@ -52,8 +73,8 @@ pub struct Scope {
     pub manage_roles: bool,
     /// Roles declared in the schema; their grants are compared even when `manage_roles` is false.
     pub declared_roles: Vec<String>,
-    /// Tables whose rows are managed (`data` blocks), as `[schema, table]`.
-    pub data_tables: Vec<Vec<String>>,
+    /// Tables whose rows are managed (`data` blocks).
+    pub data_tables: Vec<DataTable>,
     /// Refuse to manage the rows of a table that has more rows than this.
     pub data_max_rows: u64,
 }
@@ -197,8 +218,8 @@ pub trait Engine: Sized + Send + Sync + 'static {
     /// Roles declared in a model (for [`Scope::declared_roles`]).
     fn declared_roles(model: &Self::Model) -> Vec<String>;
 
-    /// Tables with managed rows in a model (for [`Scope::data_tables`]).
-    fn data_tables(model: &Self::Model) -> Vec<Vec<String>>;
+    /// Tables with managed rows in a decoded model (for [`Scope::data_tables`]).
+    fn data_tables(model: &Self::Model) -> Vec<DataTable>;
 
     /// True when the model contains no objects (used to refuse a first deploy into a non-empty
     /// database).

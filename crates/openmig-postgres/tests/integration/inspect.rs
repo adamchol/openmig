@@ -33,7 +33,7 @@ async fn build_rich(db: &TestDb, prefix: &str) -> u32 {
 fn rich_scope() -> Scope {
     Scope {
         manage_roles: true,
-        data_tables: vec![vec!["app".into(), "statuses".into()]],
+        data_tables: vec![data_table("app", "statuses")],
         data_max_rows: 100,
         ..Scope::default()
     }
@@ -207,9 +207,9 @@ async fn data_rows_and_limit() {
     .await;
     let scope = Scope {
         data_tables: vec![
-            vec!["public".into(), "kv".into()],
-            vec!["public".into(), "nokey".into()],
-            vec!["public".into(), "missing".into()],
+            data_table("public", "kv"),
+            data_table("public", "nokey"),
+            data_table("public", "missing"),
         ],
         data_max_rows: 2,
         ..Scope::default()
@@ -299,4 +299,12 @@ async fn inspection_respects_open_transactions() {
     );
     drop(s);
     db.drop().await;
+}
+
+fn data_table(schema: &str, table: &str) -> openmig_core::DataTable {
+    openmig_core::DataTable {
+        path: vec![schema.into(), table.into()],
+        columns: Vec::new(),
+        mode: None,
+    }
 }

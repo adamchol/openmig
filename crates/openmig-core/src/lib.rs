@@ -11,8 +11,9 @@ pub mod rename;
 pub mod sql;
 
 pub use engine::{
-    Capabilities, ChangeInfo, Desired, DiffContext, EncodeOptions, EncodedFile, Engine, PlanMode,
-    SchemaFilter, Scope, ServerVersion, Session, SessionPurpose, SplitBy,
+    Capabilities, ChangeInfo, DataSync, DataTable, Desired, DiffContext, EncodeOptions,
+    EncodedFile, Engine, PlanMode, SchemaFilter, Scope, ServerVersion, Session, SessionPurpose,
+    SplitBy,
 };
 pub use error::{Error, ExecError, ExecErrorKind, Result};
 pub use exclude::ExcludeSet;

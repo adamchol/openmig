@@ -150,7 +150,10 @@ pub(crate) async fn inspect(
         .query_typed(&q.schemas, &[(&ctx.history_schema, Type::TEXT)])
         .await
         .map_err(err("schemas"))?;
-    let mut db = Database::default();
+    let mut db = Database {
+        server_major: ctx.major,
+        ..Database::default()
+    };
     let mut cat = Catalog::default();
     for row in &schema_rows {
         let name: String = row.get("name");

@@ -164,7 +164,10 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
                 .await
                 .map_err(|e| format!("normalize before.hcl: {}", render(&e)))?
         }
-        None => E::Model::default(),
+        None => {
+            scratch.reset().await.map_err(|e| e.to_string())?;
+            scratch.inspect(&scope).await.map_err(|e| e.to_string())?
+        }
     };
     scratch.reset().await.map_err(|e| e.to_string())?;
     let after_model = normalize(&mut scratch, &after_ctx, &after_desired, &scope)

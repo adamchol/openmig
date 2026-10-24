@@ -7,8 +7,8 @@ use tokio_postgres::Client;
 
 /// Rows of the data-managed tables that exist, in text form.
 pub(super) async fn load(client: &Client, db: &mut Database, scope: &Scope) -> Result<(), Error> {
-    for path in &scope.data_tables {
-        let [schema, table] = path.as_slice() else {
+    for managed in &scope.data_tables {
+        let [schema, table] = managed.path.as_slice() else {
             continue;
         };
         let name = QualifiedName::new(schema, table);
@@ -21,7 +21,7 @@ pub(super) async fn load(client: &Client, db: &mut Database, scope: &Scope) -> R
         let Some(t) = db.table(&name) else {
             continue;
         };
-        let columns: Vec<String> = t
+        let all: Vec<String> = t
             .columns
             .iter()
             .filter(|c| c.generated.is_none())
@@ -29,7 +29,14 @@ pub(super) async fn load(client: &Client, db: &mut Database, scope: &Scope) -> R
             .collect();
         let key = match &t.primary_key {
             Some(pk) => pk.columns.clone(),
-            None => columns.clone(),
+            None => all.clone(),
+        };
+        let columns: Vec<String> = if managed.columns.is_empty() {
+            all
+        } else {
+            all.into_iter()
+                .filter(|c| key.contains(c) || managed.columns.contains(c))
+                .collect()
         };
         let fail = |e: tokio_postgres::Error| {
             Error::Inspect(format!("reading rows of {name}: {}", describe(&e)))
@@ -65,6 +72,7 @@ pub(super) async fn load(client: &Client, db: &mut Database, scope: &Scope) -> R
         let mut data = TableData {
             key,
             rows: BTreeMap::new(),
+            mode: None,
         };
         for row in rows {
             let values: BTreeMap<String, Option<String>> = columns

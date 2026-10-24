@@ -38,8 +38,19 @@ pub fn scope_for<E: Engine>(
     let mut scope = ctx.scope()?;
     if let Some(d) = desired {
         scope.declared_roles = E::declared_roles(&d.model);
-        if ctx.config.data != openmig_config::DataMode::Off {
-            scope.data_tables = E::data_tables(&d.model);
+        let default = match ctx.config.data {
+            openmig_config::DataMode::Off => None,
+            openmig_config::DataMode::Insert => Some(openmig_core::DataSync::Insert),
+            openmig_config::DataMode::Sync => Some(openmig_core::DataSync::Sync),
+        };
+        if let Some(default) = default {
+            scope.data_tables = E::data_tables(&d.model)
+                .into_iter()
+                .map(|mut t| {
+                    t.mode.get_or_insert(default);
+                    t
+                })
+                .collect();
         }
     }
     Ok(scope)
@@ -76,15 +87,16 @@ impl<E: Engine> Scratch<E> {
     }
 }
 
-/// Apply the desired schema to an empty scratch database and inspect it back: the desired state
-/// in the database's canonical form.
+/// Apply the desired schema to a pristine scratch database and inspect it back: the desired state
+/// in the database's canonical form. The plan starts from the inspected pristine database, which
+/// is not empty (PostgreSQL has a `public` schema).
 pub async fn normalize<E: Engine>(
     session: &mut E::Session,
     ctx: &Context<E>,
     desired: &Desired<E::Model>,
     scope: &Scope,
 ) -> Result<E::Model, Error> {
-    let empty = E::Model::default();
+    let pristine = session.inspect(scope).await?;
     let renames = RenameSet::default();
     let dctx = DiffContext::<E> {
         settings: &ctx.settings,
@@ -93,8 +105,8 @@ pub async fn normalize<E: Engine>(
         mode: PlanMode::Scratch,
         allow_recreate: false,
     };
-    let changes = E::diff(&empty, &desired.model, &dctx)?;
-    let plan = E::plan(changes, &empty, &desired.model, &dctx)?;
+    let changes = E::diff(&pristine, &desired.model, &dctx)?;
+    let plan = E::plan(changes, &pristine, &desired.model, &dctx)?;
     apply_with_retry::<E>(session, &plan, desired).await?;
     session.inspect(scope).await
 }

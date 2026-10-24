@@ -49,7 +49,7 @@ impl Engine for MockEngine {
     fn declared_roles(_: &Vec<String>) -> Vec<String> {
         Vec::new()
     }
-    fn data_tables(_: &Vec<String>) -> Vec<Vec<String>> {
+    fn data_tables(_: &Vec<String>) -> Vec<openmig_core::DataTable> {
         Vec::new()
     }
     fn is_empty(model: &Vec<String>) -> bool {
