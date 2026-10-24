@@ -1,0 +1,20 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × unknown attribute `nullable` in `column`
+   ╭─[schema.hcl:5:5]
+ 4 │     type     = bigint
+ 5 │     nullable = false
+   ·     ────────────────
+ 6 │   }
+   ╰────
+  help: did you mean `null`?
+
+  × unknown column `emial` in `app.users`
+   ╭─[schema.hcl:8:15]
+ 7 │   index "users_email_idx" {
+ 8 │     columns = ["emial"]
+   ·               ─────────
+ 9 │   }
+   ╰────

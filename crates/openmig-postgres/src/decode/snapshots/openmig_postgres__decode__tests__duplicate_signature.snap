@@ -1,0 +1,19 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × function app.f(integer) is declared more than once
+   ╭─[schema.hcl:2:1]
+ 1 │ 
+ 2 │ function "app.f" {
+   · ────────┬───────
+   ·         ╰── first declared here
+ 3 │   arg "a" {
+   ╰────
+    ╭─[schema.hcl:10:1]
+  9 │ }
+ 10 │ function "app.f_again" {
+    · ───────────┬──────────
+    ·            ╰── declared again here
+ 11 │   name = "f"
+    ╰────

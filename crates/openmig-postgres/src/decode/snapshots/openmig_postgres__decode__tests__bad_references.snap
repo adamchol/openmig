@@ -1,0 +1,19 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × `references` must point into one table, found `app.a` and `app.b`
+    ╭─[schema.hcl:16:18]
+ 15 │     columns    = [column.id, column.x]
+ 16 │     references = [table.app.a.column.id, column.x]
+    ·                  ─────────────────────────────────
+ 17 │   }
+    ╰────
+
+  × `table.app.a.column.id` is a column of `app.a`, not of `app.b`
+    ╭─[schema.hcl:19:15]
+ 18 │   primary_key {
+ 19 │     columns = [table.app.a.column.id]
+    ·               ───────────────────────
+ 20 │   }
+    ╰────

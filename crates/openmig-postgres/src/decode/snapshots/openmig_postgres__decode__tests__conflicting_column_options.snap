@@ -1,0 +1,19 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × column `id` cannot have both `identity` and `default`
+   ╭─[schema.hcl:3:3]
+ 2 │ table "app.t" {
+ 3 │   column "id" {
+   ·   ───────────
+ 4 │     type     = int
+   ╰────
+
+  × column `s` has a serial type, which brings its own default; use `type = integer` with `default`
+   ╭─[schema.hcl:8:3]
+ 7 │   }
+ 8 │   column "s" {
+   ·   ──────────
+ 9 │     type    = serial
+   ╰────

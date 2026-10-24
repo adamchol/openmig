@@ -1,0 +1,35 @@
+---
+source: crates/openmig-postgres/src/decode/tests.rs
+expression: decode_err(src)
+---
+  × a trigger has exactly one of `before`, `after` and `instead_of`
+   ╭─[schema.hcl:6:3]
+ 5 │   }
+ 6 │   trigger "t_x" {
+   ·   ─────────────
+ 7 │     before  = [INSERT]
+   ╰────
+
+  × `trigger` requires the attribute `for` (ROW or STATEMENT)
+   ╭─[schema.hcl:6:3]
+ 5 │   }
+ 6 │   trigger "t_x" {
+   ·   ─────────────
+ 7 │     before  = [INSERT]
+   ╰────
+
+  × privilege EXECUTE does not apply to table `app.t`
+    ╭─[schema.hcl:12:1]
+ 11 │ }
+ 12 │ grant {
+    · ─────
+ 13 │   privileges = [EXECUTE]
+    ╰────
+
+  × `web` is not a role: use a role reference (`role.web`) or a string
+    ╭─[schema.hcl:15:16]
+ 14 │   on         = [table.app.t]
+ 15 │   to         = [web]
+    ·                ─────
+ 16 │ }
+    ╰────
