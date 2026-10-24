@@ -8,8 +8,10 @@ pub const PUBLIC: &str = "PUBLIC";
 /// The privileges granted on an object to roles other than its owner.
 ///
 /// Inspected ACLs are effective: a NULL catalog ACL is replaced by PostgreSQL's built-in default
-/// for the kind of object. Entries for the owner, the bootstrap superuser, the connecting user and
-/// excluded roles are left out.
+/// for the kind of object (see [`default_acl`]). Entries for the owner, the bootstrap superuser,
+/// the connecting user and excluded roles are left out. Grants to roles that are not managed are
+/// kept (so that an object can be recreated with all its grants); compare only grantees for which
+/// [`crate::restrict::is_managed_grantee`] holds.
 pub type Acl = BTreeSet<AclItem>;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

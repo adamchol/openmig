@@ -2,7 +2,8 @@
 //!
 //! `OPENMIG_DIALO_MIGRATIONS=<dir> cargo test -p openmig-postgres -- --ignored --nocapture dialo`
 //! replays `<dir>/*.sql` with `psql` into a fresh database, then inspects it with roles managed
-//! and prints timings. Roles the migrations create are dropped before and after.
+//! and prints timings. Roles the migrations create are dropped before and after. Set
+//! `OPENMIG_DIALO_DUMP=<file>` to write the inspected model there.
 
 use crate::common::{ROLES, TestDb, drop_role};
 use openmig_core::{Scope, Session};
@@ -79,6 +80,9 @@ async fn dialo_smoke() {
     }
     eprintln!("inspection times: {timings:?}");
     let model = &models[0];
+    if let Some(path) = std::env::var_os("OPENMIG_DIALO_DUMP") {
+        std::fs::write(path, format!("{model:#?}")).unwrap();
+    }
     assert_eq!(model, &models[1]);
     let count = |f: &dyn Fn(&openmig_postgres::model::Schema) -> usize| -> usize {
         model.schemas.values().map(f).sum()

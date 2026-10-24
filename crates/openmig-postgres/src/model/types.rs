@@ -55,7 +55,7 @@ pub struct DomainCheck {
     pub comment: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sequence {
     pub name: String,
     /// `smallint`, `integer` or `bigint`.
@@ -67,6 +67,21 @@ pub struct Sequence {
     /// Recorded for information; owners are not managed.
     pub owner: String,
     pub acl: Acl,
+}
+
+impl Default for Sequence {
+    /// A `bigint` sequence with PostgreSQL's default parameters.
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            data_type: "bigint".into(),
+            options: SequenceOptions::default(),
+            owned_by: None,
+            comment: None,
+            owner: String::new(),
+            acl: Acl::new(),
+        }
+    }
 }
 
 /// Sequence parameters, always explicit. The current value is never part of the model.

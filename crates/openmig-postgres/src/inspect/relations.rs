@@ -429,7 +429,7 @@ pub(super) fn constraints(
                         name: name.clone(),
                         columns: row.get("columns"),
                         include: index.include,
-                        nulls_distinct: index.nulls_distinct || index.name.is_empty(),
+                        nulls_distinct: index.nulls_distinct,
                         deferrable,
                         initially_deferred,
                         storage_params: index.storage_params,

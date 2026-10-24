@@ -3,6 +3,55 @@
 //! empty `search_path`, so names printed by `format_type`, `pg_get_expr` and friends are qualified
 //! unless they live in `pg_catalog`.
 
+/// Every query of one inspection, built for one server major version.
+pub(super) struct Queries {
+    pub schemas: String,
+    pub relations: String,
+    pub columns: String,
+    pub indexes: String,
+    pub constraints: String,
+    pub triggers: String,
+    pub policies: String,
+    pub functions: String,
+    pub types: String,
+    pub derived_types: String,
+    pub sequences: String,
+    pub rules_and_defaults: String,
+    pub extensions: String,
+    pub event_triggers: String,
+    pub roles: String,
+    pub memberships: String,
+    pub depends: String,
+    pub extension_members: String,
+    pub policy_roles: String,
+}
+
+impl Queries {
+    pub fn new(major: u32) -> Self {
+        Self {
+            schemas: schemas(),
+            relations: relations(),
+            columns: columns(),
+            indexes: indexes(major),
+            constraints: constraints(major),
+            triggers: triggers(),
+            policies: policies(),
+            functions: functions(),
+            types: types(),
+            derived_types: derived_types(),
+            sequences: sequences(),
+            rules_and_defaults: rules_and_defaults(),
+            extensions: extensions(),
+            event_triggers: event_triggers(),
+            roles: roles(),
+            memberships: memberships(major),
+            depends: depends(),
+            extension_members: extension_members(),
+            policy_roles: policy_roles(),
+        }
+    }
+}
+
 /// JSON array of `[grantee, privilege, grantable]` for an ACL column, replacing NULL by
 /// `acldefault(kind, owner)` when `kind` is given, without entries for the owner, the bootstrap
 /// superuser and the current user.
@@ -36,7 +85,7 @@ fn not_extension_member(class: &str, oid: &str) -> String {
 }
 
 /// `$1` is the history schema.
-pub(super) fn schemas() -> String {
+fn schemas() -> String {
     format!(
         "SELECT n.oid, n.nspname::text AS name, pg_get_userbyid(n.nspowner)::text AS owner, \
            obj_description(n.oid, 'pg_namespace') AS comment, {acl} AS acl \
@@ -48,7 +97,7 @@ pub(super) fn schemas() -> String {
     )
 }
 
-pub(super) fn relations() -> String {
+fn relations() -> String {
     format!(
         "SELECT c.oid, c.relnamespace AS nsp, c.relname::text AS name, c.relkind::text AS kind, \
            c.relpersistence::text AS persistence, c.relrowsecurity AS rls, \
@@ -71,7 +120,7 @@ pub(super) fn relations() -> String {
 }
 
 /// Attributes of tables, views, materialized views and composite types.
-pub(super) fn columns() -> String {
+fn columns() -> String {
     format!(
         "SELECT a.attrelid AS rel, a.attnum AS num, a.attname::text AS name, \
            format_type(a.atttypid, a.atttypmod) AS type, a.attnotnull AS not_null, \
@@ -97,7 +146,7 @@ pub(super) fn columns() -> String {
 
 /// Indexes of tables and materialized views, except partition indexes attached to an index of
 /// the partitioned parent.
-pub(super) fn indexes(major: u32) -> String {
+fn indexes(major: u32) -> String {
     let nulls_not_distinct = if major >= 15 {
         "i.indnullsnotdistinct"
     } else {
@@ -140,7 +189,7 @@ pub(super) fn indexes(major: u32) -> String {
 }
 
 /// Table and domain constraints that are declared locally (not inherited from a parent).
-pub(super) fn constraints(major: u32) -> String {
+fn constraints(major: u32) -> String {
     let enforced = if major >= 18 {
         "con.conenforced"
     } else {
@@ -177,7 +226,7 @@ pub(super) fn constraints(major: u32) -> String {
 }
 
 /// User triggers, except internal ones (foreign keys) and clones on partitions.
-pub(super) fn triggers() -> String {
+fn triggers() -> String {
     "SELECT t.oid, t.tgrelid AS rel, t.tgname::text AS name, t.tgtype::int4 AS type, \
        t.tgenabled::text AS enabled, \
        ARRAY(SELECT a.attname::text FROM unnest(t.tgattr::int2[]) WITH ORDINALITY k(n, o) \
@@ -200,7 +249,7 @@ pub(super) fn triggers() -> String {
         .to_owned()
 }
 
-pub(super) fn policies() -> String {
+fn policies() -> String {
     "SELECT p.oid, p.polrelid AS rel, p.polname::text AS name, p.polcmd::text AS cmd, \
        p.polpermissive AS permissive, \
        ARRAY(SELECT CASE WHEN r = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(r)::text END \
@@ -214,7 +263,7 @@ pub(super) fn policies() -> String {
 }
 
 /// Functions, window functions and procedures (aggregates are not modelled).
-pub(super) fn functions() -> String {
+fn functions() -> String {
     format!(
         "SELECT p.oid, p.pronamespace AS nsp, p.proname::text AS name, p.prokind::text AS kind, \
            l.lanname::text AS language, p.prosrc AS src, \
@@ -240,7 +289,7 @@ pub(super) fn functions() -> String {
 }
 
 /// Enums, domains and composite types.
-pub(super) fn types() -> String {
+fn types() -> String {
     format!(
         "SELECT t.oid, t.typnamespace AS nsp, t.typname::text AS name, t.typtype::text AS type, \
            t.typrelid AS rel, \
@@ -266,7 +315,7 @@ pub(super) fn types() -> String {
 }
 
 /// Array types and row types of relations, for resolving dependencies on them.
-pub(super) fn derived_types() -> String {
+fn derived_types() -> String {
     "SELECT t.oid, t.typelem AS elem, t.typrelid AS rel FROM pg_type t \
      WHERE t.typnamespace = ANY($1) AND t.typtype NOT IN ('e', 'd') \
        AND (t.typrelid <> 0 OR (t.typelem <> 0 AND t.typsubscript = 'array_subscript_handler'::regproc))"
@@ -274,7 +323,7 @@ pub(super) fn derived_types() -> String {
 }
 
 /// Sequences with the column that owns them (`a`: `OWNED BY`, `i`: identity).
-pub(super) fn sequences() -> String {
+fn sequences() -> String {
     format!(
         "SELECT c.oid, c.relnamespace AS nsp, c.relname::text AS name, \
            format_type(s.seqtypid, NULL) AS type, s.seqstart AS start, \
@@ -297,7 +346,7 @@ pub(super) fn sequences() -> String {
     )
 }
 
-pub(super) fn extensions() -> String {
+fn extensions() -> String {
     "SELECT e.oid, e.extname::text AS name, n.nspname::text AS schema, e.extversion AS version, \
        obj_description(e.oid, 'pg_extension') AS comment \
      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace \
@@ -305,7 +354,7 @@ pub(super) fn extensions() -> String {
         .to_owned()
 }
 
-pub(super) fn event_triggers() -> String {
+fn event_triggers() -> String {
     format!(
         "SELECT e.oid, e.evtname::text AS name, e.evtevent::text AS event, \
            e.evtenabled::text AS enabled, coalesce(e.evttags, '{{}}') AS tags, \
@@ -321,7 +370,7 @@ pub(super) fn event_triggers() -> String {
 }
 
 /// Roles except built-in ones, the bootstrap superuser and the current user.
-pub(super) fn roles() -> String {
+fn roles() -> String {
     "SELECT r.oid, r.rolname::text AS name, r.rolsuper AS superuser, r.rolinherit AS inherit, \
        r.rolcreaterole AS createrole, r.rolcreatedb AS createdb, r.rolcanlogin AS login, \
        r.rolreplication AS replication, r.rolbypassrls AS bypassrls, \
@@ -332,7 +381,7 @@ pub(super) fn roles() -> String {
         .to_owned()
 }
 
-pub(super) fn memberships(major: u32) -> String {
+fn memberships(major: u32) -> String {
     let options = if major >= 16 {
         "m.inherit_option AS inherit, m.set_option AS set"
     } else {
@@ -345,7 +394,7 @@ pub(super) fn memberships(major: u32) -> String {
 }
 
 /// Dependencies between non-system objects (and on schemas, as `public` has a system OID).
-pub(super) fn depends() -> String {
+fn depends() -> String {
     "SELECT d.classid::regclass::text AS class, d.objid, d.objsubid, \
        d.refclassid::regclass::text AS refclass, d.refobjid, d.refobjsubid \
      FROM pg_depend d \
@@ -355,17 +404,18 @@ pub(super) fn depends() -> String {
 }
 
 /// Objects that belong to an extension.
-pub(super) fn extension_members() -> String {
+fn extension_members() -> String {
     "SELECT d.classid::regclass::text AS class, d.objid, e.extname::text AS extension \
      FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid \
      WHERE d.refclassid = 'pg_extension'::regclass AND d.deptype = 'e'"
         .to_owned()
 }
 
-/// Rewrite rules (view definitions) and column defaults, mapped to their relation.
-pub(super) fn rules_and_defaults() -> String {
+/// View definitions (`_RETURN` rules) and column defaults, mapped to their relation.
+fn rules_and_defaults() -> String {
     "SELECT 'pg_rewrite' AS class, r.oid, r.ev_class AS rel, 0::int2 AS num \
-     FROM pg_rewrite r JOIN pg_class c ON c.oid = r.ev_class WHERE c.relnamespace = ANY($1) \
+     FROM pg_rewrite r JOIN pg_class c ON c.oid = r.ev_class \
+     WHERE c.relnamespace = ANY($1) AND r.rulename = '_RETURN' \
      UNION ALL \
      SELECT 'pg_attrdef', ad.oid, ad.adrelid, ad.adnum \
      FROM pg_attrdef ad JOIN pg_class c ON c.oid = ad.adrelid WHERE c.relnamespace = ANY($1)"
@@ -373,7 +423,7 @@ pub(super) fn rules_and_defaults() -> String {
 }
 
 /// Roles named by policies.
-pub(super) fn policy_roles() -> String {
+fn policy_roles() -> String {
     "SELECT s.objid AS policy, r.rolname::text AS role \
      FROM pg_shdepend s JOIN pg_roles r ON r.oid = s.refobjid \
      WHERE s.dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \

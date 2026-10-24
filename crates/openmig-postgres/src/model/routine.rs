@@ -35,7 +35,7 @@ impl Function {
     /// The key of this function within its schema: `name(integer, text)`, the name followed by
     /// the types of the `IN`, `INOUT` and `VARIADIC` arguments as `oidvectortypes` prints them.
     pub fn signature(&self) -> String {
-        signature(&self.name, self.input_types())
+        function_signature(&self.name, self.input_types())
     }
 
     /// Types of the arguments that are part of the identity.
@@ -47,8 +47,11 @@ impl Function {
     }
 }
 
-/// `name(type, type)`.
-pub fn signature<'a>(name: &str, input_types: impl IntoIterator<Item = &'a str>) -> String {
+/// The key of a function within its schema: `name(type, type)`, see [`Function::signature`].
+pub fn function_signature<'a>(
+    name: &str,
+    input_types: impl IntoIterator<Item = &'a str>,
+) -> String {
     let types: Vec<&str> = input_types.into_iter().collect();
     format!("{name}({})", types.join(", "))
 }

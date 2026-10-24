@@ -21,6 +21,7 @@ pub use cluster::{EventTrigger, Extension, Membership, Role};
 pub use objects::Object;
 pub use routine::{
     ArgMode, Function, FunctionArg, FunctionBody, Parallel, ReturnColumn, Returns, Volatility,
+    function_signature,
 };
 pub use table::{
     Check, Column, ConstraintTrigger, Exclusion, ExclusionElement, FkAction, FkMatch, ForeignKey,
@@ -91,7 +92,8 @@ pub struct Database {
     /// policy roles from `pg_shdepend`). Sorted and free of duplicates. Dependencies on objects
     /// that belong to an extension point to the extension. Left out: edges from an object to its
     /// own container (an index to its table, a function to its schema), edges to system objects,
-    /// and `OWNED BY` links (see [`Sequence::owned_by`]).
+    /// and `OWNED BY` links (see [`Sequence::owned_by`]). An index that implements a constraint
+    /// is represented by the constraint.
     pub dependencies: Vec<Dependency>,
 }
 

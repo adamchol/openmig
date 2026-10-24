@@ -68,8 +68,8 @@ impl PgSession {
         let history = settings.history()?;
         let spec = if purpose == SessionPurpose::Scratch {
             let work = scratch_database(&spec);
-            let admin = connect_checked(&spec.with_dbname(MAINTENANCE_DATABASE)).await?;
-            recreate_database(&admin.0, &work).await?;
+            let (admin, _, _) = connect_checked(&spec.with_dbname(MAINTENANCE_DATABASE)).await?;
+            recreate_database(&admin, &work).await?;
             spec.with_dbname(&work)
         } else {
             spec

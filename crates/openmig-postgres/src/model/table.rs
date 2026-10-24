@@ -268,7 +268,7 @@ pub struct ExclusionElement {
     pub operator: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Index {
     pub name: String,
     /// Access method: `btree`, `hash`, `gin`, `gist`, `brin`, `spgist`, ...
@@ -286,6 +286,24 @@ pub struct Index {
     /// The index implements the primary key, unique or exclusion constraint of the same name and
     /// is managed through that constraint.
     pub constraint: bool,
+}
+
+impl Default for Index {
+    /// A non-unique btree index without keys.
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            method: "btree".into(),
+            unique: false,
+            keys: Vec::new(),
+            include: Vec::new(),
+            predicate: None,
+            nulls_distinct: true,
+            storage_params: BTreeMap::new(),
+            comment: None,
+            constraint: false,
+        }
+    }
 }
 
 /// One key part of an index.
@@ -484,7 +502,7 @@ pub enum ViewCheckOption {
     Cascaded,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MaterializedView {
     pub name: String,
     /// `pg_get_viewdef(oid, true)`.
@@ -498,4 +516,21 @@ pub struct MaterializedView {
     /// Recorded for information; owners are not managed.
     pub owner: String,
     pub acl: Acl,
+}
+
+impl Default for MaterializedView {
+    /// A populated materialized view.
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            query: String::new(),
+            columns: Vec::new(),
+            with_data: true,
+            indexes: BTreeMap::new(),
+            storage_params: BTreeMap::new(),
+            comment: None,
+            owner: String::new(),
+            acl: Acl::new(),
+        }
+    }
 }

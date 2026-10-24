@@ -145,8 +145,9 @@ pub(crate) async fn inspect(
     ctx: &InspectContext,
     scope: &Scope,
 ) -> Result<Database, Error> {
+    let q = sql::Queries::new(ctx.major);
     let schema_rows = client
-        .query_typed(&sql::schemas(), &[(&ctx.history_schema, Type::TEXT)])
+        .query_typed(&q.schemas, &[(&ctx.history_schema, Type::TEXT)])
         .await
         .map_err(err("schemas"))?;
     let mut db = Database::default();
@@ -170,74 +171,58 @@ pub(crate) async fn inspect(
     }
     let oids: Vec<u32> = cat.namespaces.keys().copied().collect();
     let s = Some(oids.as_slice());
-    let major = ctx.major;
-    let (q_rel, q_col, q_idx, q_con, q_trg, q_pol, q_fun, q_typ, q_der, q_seq, q_parts) = (
-        sql::relations(),
-        sql::columns(),
-        sql::indexes(major),
-        sql::constraints(major),
-        sql::triggers(),
-        sql::policies(),
-        sql::functions(),
-        sql::types(),
-        sql::derived_types(),
-        sql::sequences(),
-        sql::rules_and_defaults(),
-    );
-    let (q_ext, q_evt, q_rol, q_mem, q_dep, q_mbr, q_prl) = (
-        sql::extensions(),
-        sql::event_triggers(),
-        sql::roles(),
-        sql::memberships(major),
-        sql::depends(),
-        sql::extension_members(),
-        sql::policy_roles(),
-    );
-    let roles_query = async {
+    let roles = async {
         if scope.manage_roles {
-            futures_util::try_join!(
-                query(client, "roles", &q_rol, None),
-                query(client, "role memberships", &q_mem, None),
-            )
+            query(client, "roles", &q.roles, None).await
         } else {
-            Ok((Vec::new(), Vec::new()))
+            Ok(Vec::new())
+        }
+    };
+    let memberships = async {
+        if scope.manage_roles {
+            query(client, "role memberships", &q.memberships, None).await
+        } else {
+            Ok(Vec::new())
         }
     };
     let (
-        (relations, columns, indexes, constraints, triggers, policies),
-        (functions, types, derived, sequences, parts),
-        (extensions, event_triggers, depends, members, policy_roles),
-        (roles, memberships),
+        relations,
+        columns,
+        indexes,
+        constraints,
+        triggers,
+        policies,
+        functions,
+        types,
+        derived,
+        sequences,
+        parts,
+        extensions,
+        event_triggers,
+        depends,
+        members,
+        policy_roles,
+        roles,
+        memberships,
     ) = futures_util::try_join!(
-        async {
-            futures_util::try_join!(
-                query(client, "relations", &q_rel, s),
-                query(client, "columns", &q_col, s),
-                query(client, "indexes", &q_idx, s),
-                query(client, "constraints", &q_con, s),
-                query(client, "triggers", &q_trg, s),
-                query(client, "policies", &q_pol, s),
-            )
-        },
-        async {
-            futures_util::try_join!(
-                query(client, "functions", &q_fun, s),
-                query(client, "types", &q_typ, s),
-                query(client, "derived types", &q_der, s),
-                query(client, "sequences", &q_seq, s),
-                query(client, "rules and defaults", &q_parts, s),
-            )
-        },
-        async {
-            futures_util::try_join!(
-                query(client, "extensions", &q_ext, None),
-                query(client, "event triggers", &q_evt, None),
-                query(client, "dependencies", &q_dep, None),
-                query(client, "extension members", &q_mbr, None),
-                query(client, "policy roles", &q_prl, None),
-            )
-        },
-        roles_query,
+        query(client, "relations", &q.relations, s),
+        query(client, "columns", &q.columns, s),
+        query(client, "indexes", &q.indexes, s),
+        query(client, "constraints", &q.constraints, s),
+        query(client, "triggers", &q.triggers, s),
+        query(client, "policies", &q.policies, s),
+        query(client, "functions", &q.functions, s),
+        query(client, "types", &q.types, s),
+        query(client, "derived types", &q.derived_types, s),
+        query(client, "sequences", &q.sequences, s),
+        query(client, "rules and defaults", &q.rules_and_defaults, s),
+        query(client, "extensions", &q.extensions, None),
+        query(client, "event triggers", &q.event_triggers, None),
+        query(client, "dependencies", &q.depends, None),
+        query(client, "extension members", &q.extension_members, None),
+        query(client, "policy roles", &q.policy_roles, None),
+        roles,
+        memberships,
     )?;
 
     types::types(&mut db, &mut cat, &types)?;
