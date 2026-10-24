@@ -11,7 +11,7 @@ use openmig_core::{
     Capabilities, Error, ExecError, HistoryRow, Scope, ServerVersion, Session, SessionPurpose,
 };
 use std::time::{Duration, Instant};
-use tokio_postgres::Client;
+use tokio_postgres::{Client, SimpleQueryMessage};
 
 /// Lowest supported server major version.
 pub const MIN_SERVER_VERSION: u32 = 14;
@@ -156,9 +156,60 @@ impl PgSession {
         Ok(())
     }
 
+    /// Make the catalog queries of one inspection see one snapshot: a read-only repeatable read
+    /// transaction, unless the caller has a transaction open (then its snapshot is used).
+    async fn begin_snapshot(&self) -> Result<Snapshot, Error> {
+        // `now()` equals `statement_timestamp()` only in the first command of a transaction, so
+        // this is true exactly when no transaction block is open.
+        let messages = self
+            .client
+            .simple_query("SELECT pg_catalog.now() = pg_catalog.statement_timestamp()")
+            .await
+            .map_err(|e| exec_error(&e))?;
+        let autocommit = messages
+            .iter()
+            .any(|m| matches!(m, SimpleQueryMessage::Row(row) if row.get(0) == Some("t")));
+        let (sql, snapshot) = if autocommit {
+            (
+                "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+                Snapshot::Transaction,
+            )
+        } else {
+            ("SAVEPOINT openmig_inspect", Snapshot::Savepoint)
+        };
+        self.client
+            .batch_execute(sql)
+            .await
+            .map_err(|e| exec_error(&e))?;
+        Ok(snapshot)
+    }
+
+    async fn end_snapshot(&self, snapshot: Snapshot, ok: bool) -> Result<(), Error> {
+        let sql = match (snapshot, ok) {
+            (Snapshot::Transaction, _) => "ROLLBACK",
+            (Snapshot::Savepoint, true) => "RELEASE SAVEPOINT openmig_inspect",
+            (Snapshot::Savepoint, false) => {
+                "ROLLBACK TO SAVEPOINT openmig_inspect; RELEASE SAVEPOINT openmig_inspect"
+            }
+        };
+        self.client
+            .batch_execute(sql)
+            .await
+            .map_err(|e| exec_error(&e).into())
+    }
+
     fn lock_key_sql() -> &'static str {
         "pg_catalog.hashtext('openmig:' || pg_catalog.current_database())"
     }
+}
+
+/// How [`PgSession::begin_snapshot`] isolated an inspection.
+#[derive(Clone, Copy)]
+enum Snapshot {
+    /// A transaction of its own.
+    Transaction,
+    /// A savepoint in the caller's transaction.
+    Savepoint,
 }
 
 /// The working database of a scratch session.
@@ -250,7 +301,14 @@ impl Session<PostgresEngine> for PgSession {
             major: self.version.major,
             history_schema: self.history.schema.clone(),
         };
-        let result = inspect::inspect(&self.client, &ctx, scope).await;
+        let result = match self.begin_snapshot().await {
+            Ok(snapshot) => {
+                let result = inspect::inspect(&self.client, &ctx, scope).await;
+                let end = self.end_snapshot(snapshot, result.is_ok()).await;
+                result.and_then(|model| end.map(|()| model))
+            }
+            Err(e) => Err(e),
+        };
         let restored = self.leave_inspection(saved).await;
         let model = result?;
         restored?;

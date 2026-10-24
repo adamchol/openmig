@@ -257,3 +257,46 @@ async fn inspection_restores_session_settings() {
     assert!(session.inspect(&Scope::default()).await.unwrap().is_empty());
     db.drop().await;
 }
+
+/// No transaction block is open (`now()` is the start of the current statement).
+async fn autocommit(s: &openmig_postgres::PgSession) -> bool {
+    let rows = s
+        .client()
+        .simple_query("SELECT now() = statement_timestamp()")
+        .await
+        .unwrap();
+    rows.iter()
+        .any(|m| matches!(m, tokio_postgres::SimpleQueryMessage::Row(r) if r.get(0) == Some("t")))
+}
+
+#[tokio::test]
+async fn inspection_respects_open_transactions() {
+    let Some(db) = TestDb::create("omt_snapshot").await else {
+        return;
+    };
+    let table = |name: &str| ObjectRef::new(ObjectKind::Table, ["public", name]);
+    let mut s = db.session().await;
+    s.inspect(&Scope::default()).await.unwrap();
+    assert!(autocommit(&s).await, "inspection left a transaction open");
+    s.execute("CREATE TABLE public.a (id int)").await.unwrap();
+    assert!(db.inspect(&Scope::default()).await.contains(&table("a")));
+
+    s.begin().await.unwrap();
+    s.execute("CREATE TABLE public.b (id int)").await.unwrap();
+    let inside = s.inspect(&Scope::default()).await.unwrap();
+    assert!(inside.contains(&table("b")), "uncommitted DDL is visible");
+    assert!(
+        !autocommit(&s).await,
+        "the caller's transaction is still open"
+    );
+    assert!(!db.inspect(&Scope::default()).await.contains(&table("b")));
+    s.rollback().await.unwrap();
+    assert!(
+        !s.inspect(&Scope::default())
+            .await
+            .unwrap()
+            .contains(&table("b"))
+    );
+    drop(s);
+    db.drop().await;
+}
