@@ -20,7 +20,9 @@ use openmig::context::Context;
 use openmig::flows::common::{apply_plan, load_desired, normalize, plan_between, scope_for};
 use openmig::term::RecordingUi;
 use openmig_config::DatabaseConfig;
-use openmig_core::{EncodeOptions, Engine, Error, PlanMode, RenameSet, Scope, Session, SessionPurpose};
+use openmig_core::{
+    EncodeOptions, Engine, Error, PlanMode, RenameSet, Scope, Session, SessionPurpose,
+};
 use std::any::Any;
 use std::path::{Path, PathBuf};
 
@@ -134,8 +136,14 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
     let mut target = E::connect(&target_url, &base.settings, SessionPurpose::Scratch)
         .await
         .map_err(|e| format!("connect target: {e}"))?;
-    scratch.reset().await.map_err(|e| format!("reset scratch: {e}"))?;
-    target.reset().await.map_err(|e| format!("reset target: {e}"))?;
+    scratch
+        .reset()
+        .await
+        .map_err(|e| format!("reset scratch: {e}"))?;
+    target
+        .reset()
+        .await
+        .map_err(|e| format!("reset target: {e}"))?;
 
     let before_path = case.dir.join("before.hcl");
     let after_path = case.dir.join("after.hcl");
@@ -177,12 +185,23 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
     converge::<E>(&base, &scope, &mut target, &before_model, "before", None).await?;
 
     let renames = E::resolve_hints(&before_model, &after_model, &after_desired.hints);
-    let forward = plan_between(&base, &scope, &before_model, &after_model, &renames, PlanMode::Generate, false);
+    let forward = plan_between(
+        &base,
+        &scope,
+        &before_model,
+        &after_model,
+        &renames,
+        PlanMode::Generate,
+        false,
+    );
     if let Some(expected) = &options.error {
         return match forward {
             Err(e) if error_kind(&e) == expected => Ok(()),
             Err(e) => Err(format!("expected a `{expected}` error, got: {e}")),
-            Ok(plan) => Err(format!("expected a `{expected}` error, got a plan:\n{}", plan.to_sql())),
+            Ok(plan) => Err(format!(
+                "expected a `{expected}` error, got a plan:\n{}",
+                plan.to_sql()
+            )),
         };
     }
     let forward = forward.map_err(|e| format!("plan before -> after: {e}"))?;
@@ -204,16 +223,40 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
     apply_plan::<E>(&mut target, &forward)
         .await
         .map_err(|e| format!("apply before -> after:\n{}\n{}", render(&e), sql))?;
-    converge::<E>(&base, &scope, &mut target, &after_model, "after", Some(&forward)).await?;
+    converge::<E>(
+        &base,
+        &scope,
+        &mut target,
+        &after_model,
+        "after",
+        Some(&forward),
+    )
+    .await?;
 
     if options.reverse.unwrap_or(true) {
         let current = target.inspect(&scope).await.map_err(|e| e.to_string())?;
-        let back = plan_between(&base, &scope, &current, &before_model, &RenameSet::default(), PlanMode::Generate, false)
-            .map_err(|e| format!("plan after -> before: {e}"))?;
+        let back = plan_between(
+            &base,
+            &scope,
+            &current,
+            &before_model,
+            &RenameSet::default(),
+            PlanMode::Generate,
+            false,
+        )
+        .map_err(|e| format!("plan after -> before: {e}"))?;
         apply_plan::<E>(&mut target, &back)
             .await
             .map_err(|e| format!("apply after -> before:\n{}\n{}", render(&e), back.to_sql()))?;
-        converge::<E>(&base, &scope, &mut target, &before_model, "before (reverse)", Some(&back)).await?;
+        converge::<E>(
+            &base,
+            &scope,
+            &mut target,
+            &before_model,
+            "before (reverse)",
+            Some(&back),
+        )
+        .await?;
     }
 
     if options.roundtrip.unwrap_or(true) {
@@ -226,13 +269,22 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
         }
         let mut ctx = base.clone();
         ctx.schema_paths = vec![dir.path().to_path_buf()];
-        let desired = load_desired(&ctx, &ui).map_err(|e| format!("load inspect output: {}\n{hcl}", render(&e)))?;
+        let desired = load_desired(&ctx, &ui)
+            .map_err(|e| format!("load inspect output: {}\n{hcl}", render(&e)))?;
         scratch.reset().await.map_err(|e| e.to_string())?;
         let again = normalize(&mut scratch, &ctx, &desired, &scope)
             .await
             .map_err(|e| format!("normalize inspect output: {}\n{hcl}", render(&e)))?;
-        let plan = plan_between(&base, &scope, &again, &after_model, &RenameSet::default(), PlanMode::Generate, false)
-            .map_err(|e| e.to_string())?;
+        let plan = plan_between(
+            &base,
+            &scope,
+            &again,
+            &after_model,
+            &RenameSet::default(),
+            PlanMode::Generate,
+            false,
+        )
+        .map_err(|e| e.to_string())?;
         if !plan.is_empty() {
             return Err(format!(
                 "inspect output does not round-trip; remaining plan:\n{}\ninspect output:\n{hcl}",
@@ -252,8 +304,16 @@ async fn converge<E: Engine>(
     applied: Option<&openmig_core::Plan>,
 ) -> Result<(), String> {
     let current = target.inspect(scope).await.map_err(|e| e.to_string())?;
-    let plan = plan_between(ctx, scope, &current, desired, &RenameSet::default(), PlanMode::Sync, false)
-        .map_err(|e| format!("plan to {label}: {e}"))?;
+    let plan = plan_between(
+        ctx,
+        scope,
+        &current,
+        desired,
+        &RenameSet::default(),
+        PlanMode::Sync,
+        false,
+    )
+    .map_err(|e| format!("plan to {label}: {e}"))?;
     if plan.is_empty() {
         return Ok(());
     }
@@ -262,8 +322,16 @@ async fn converge<E: Engine>(
             .await
             .map_err(|e| format!("apply empty -> {label}:\n{}\n{}", render(&e), plan.to_sql()))?;
         let current = target.inspect(scope).await.map_err(|e| e.to_string())?;
-        let again = plan_between(ctx, scope, &current, desired, &RenameSet::default(), PlanMode::Sync, false)
-            .map_err(|e| e.to_string())?;
+        let again = plan_between(
+            ctx,
+            scope,
+            &current,
+            desired,
+            &RenameSet::default(),
+            PlanMode::Sync,
+            false,
+        )
+        .map_err(|e| e.to_string())?;
         if again.is_empty() {
             return Ok(());
         }
