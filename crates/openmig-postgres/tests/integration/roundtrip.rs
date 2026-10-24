@@ -169,7 +169,12 @@ async fn rich_schema_round_trips() {
         .iter()
         .map(|f| f.path.display().to_string())
         .collect();
-    assert_eq!(names, ["app.hcl", "audit.hcl", "cluster.hcl"]);
+    let mut expected = vec!["app.hcl", "audit.hcl", "cluster.hcl"];
+    if major < 15 {
+        // `public` grants CREATE to PUBLIC before PostgreSQL 15, which is not a default.
+        expected.push("public.hcl");
+    }
+    assert_eq!(names, expected);
     assert_round_trips(&model, &settings, SplitBy::Kind);
     db.drop().await;
     drop_roles(prefix).await;

@@ -1,0 +1,881 @@
+---
+source: crates/openmig-postgres/tests/integration/roundtrip.rs
+expression: "files[0].content"
+---
+role "omt_rt_admin" {
+  createrole = true
+}
+
+role "omt_rt_owner" {}
+
+role "omt_rt_web" {
+  login            = true
+  connection_limit = 10
+  valid_until      = "2030-01-01 00:00:00+00"
+  member_of        = [role.omt_rt_worker]
+  comment          = "web application"
+}
+
+role "omt_rt_worker" {
+  createdb  = true
+  inherit   = false
+  bypassrls = true
+  member_of = [{ role = role.omt_rt_admin, admin = true }]
+}
+
+extension "btree_gist" {
+  version = "1.6"
+  comment = "support for indexing common datatypes in GiST"
+}
+
+extension "citext" {
+  version = "1.6"
+  comment = "case-insensitive text"
+}
+
+extension "pgcrypto" {
+  version = "1.3"
+  comment = "cryptographic functions"
+}
+
+schema "app" {
+  comment = "application schema"
+}
+
+enum "app.status" {
+  values  = ["active", "disabled", "deleted"]
+  comment = "account status"
+}
+
+composite "app.address" {
+  field "street" {
+    type = text
+  }
+
+  field "city" {
+    type    = text
+    collate = "C"
+  }
+
+  field "zip" {
+    type = varchar(10)
+  }
+}
+
+domain "app.code" {
+  type    = text
+  collate = "C"
+}
+
+domain "app.email" {
+  type    = "public.citext"
+  comment = "email address"
+
+  check "email_at" {
+    expr = "VALUE OPERATOR(public.~) '@'::public.citext"
+  }
+}
+
+domain "app.money_amount" {
+  type    = numeric(12, 2)
+  null    = false
+  default = 0
+
+  check "positive" {
+    expr    = "VALUE >= 0::numeric"
+    comment = "no debt"
+  }
+}
+
+sequence "app.invoice_no" {
+  type      = integer
+  increment = 10
+  min       = 1000
+  max       = 999999
+  cache     = 5
+  cycle     = true
+  owned_by  = table.app.orgs.column.invoice
+  comment   = "invoice numbers"
+}
+
+table "app.cache" {
+  unlogged       = true
+  storage_params = { autovacuum_enabled = false }
+
+  column "k" {
+    type = text
+  }
+
+  column "v" {
+    type = bytea
+  }
+
+  primary_key {
+    columns = [column.k]
+  }
+}
+
+table "app.events" {
+  partition_by = "RANGE (at)"
+
+  column "id" {
+    type = bigint
+  }
+
+  column "at" {
+    type = timestamptz
+  }
+
+  column "payload" {
+    type = jsonb
+  }
+
+  primary_key {
+    columns = [column.id, column.at]
+  }
+
+  index "events_at_idx" {
+    columns = [column.at]
+  }
+}
+
+table "app.events_2026" {
+  partition_of    = table.app.events
+  partition_bound = "FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2027-01-01 00:00:00+00')"
+
+  column "id" {
+    type = bigint
+    null = false
+  }
+
+  column "at" {
+    type = timestamptz
+    null = false
+  }
+
+  column "payload" {
+    type = jsonb
+  }
+}
+
+table "app.events_default" {
+  partition_of    = table.app.events
+  partition_bound = "DEFAULT"
+
+  column "id" {
+    type = bigint
+    null = false
+  }
+
+  column "at" {
+    type = timestamptz
+    null = false
+  }
+
+  column "payload" {
+    type = jsonb
+  }
+}
+
+table "app.orgs" {
+  column "id" {
+    type     = bigint
+    identity = { generated = ALWAYS, increment = 5, start = 10 }
+  }
+
+  column "name" {
+    type = text
+    null = false
+  }
+
+  column "slug" {
+    type    = text
+    null    = false
+    collate = "C"
+  }
+
+  column "settings" {
+    type    = jsonb
+    null    = false
+    default = "{}"
+  }
+
+  column "invoice" {
+    type    = integer
+    default = sql("nextval('app.invoice_no'::regclass)")
+  }
+
+  column "created_at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+
+  column "updated_at" {
+    type = timestamptz
+  }
+
+  primary_key {
+    columns = [column.id]
+  }
+
+  unique "orgs_slug_key" {
+    columns            = [column.slug]
+    deferrable         = true
+    initially_deferred = true
+  }
+
+  trigger "orgs_touch" {
+    before    = [UPDATE]
+    update_of = ["name", "slug"]
+    for       = ROW
+    when      = "old.* IS DISTINCT FROM new.*"
+    execute   = function.app.touch
+    comment   = "keeps updated_at"
+  }
+}
+
+table "app.rooms" {
+  column "id" {
+    type = integer
+  }
+
+  column "during" {
+    type = tstzrange
+    null = false
+  }
+
+  column "org_id" {
+    type = bigint
+    null = false
+  }
+
+  primary_key {
+    columns = [column.id]
+  }
+
+  foreign_key "rooms_org_id_fkey" {
+    columns    = [column.org_id]
+    references = [table.app.orgs.column.id]
+    on_update  = RESTRICT
+    on_delete  = SET_NULL
+    match      = FULL
+  }
+
+  exclude "rooms_no_overlap" {
+    using = gist
+    where = "id > 0"
+
+    key {
+      column   = column.org_id
+      operator = "="
+    }
+
+    key {
+      column   = column.during
+      operator = "&&"
+    }
+  }
+
+  trigger "rooms_check" {
+    after              = [INSERT, UPDATE]
+    for                = ROW
+    execute            = function.app.audit_row
+    constraint         = true
+    deferrable         = true
+    initially_deferred = true
+  }
+}
+
+table "app.statuses" {
+  column "code" {
+    type = text
+  }
+
+  column "label" {
+    type = text
+    null = false
+  }
+
+  column "sort" {
+    type = integer
+  }
+
+  primary_key {
+    columns = [column.code]
+  }
+}
+
+table "app.users" {
+  comment          = "users"
+  rls              = { enabled = true, force = true }
+  replica_identity = "users_pkey"
+
+  column "id" {
+    type    = uuid
+    default = sql("gen_random_uuid()")
+  }
+
+  column "org_id" {
+    type = bigint
+    null = false
+  }
+
+  column "email" {
+    type    = domain.app.email
+    null    = false
+    comment = "login email"
+  }
+
+  column "status" {
+    type    = enum.app.status
+    null    = false
+    default = "active"
+  }
+
+  column "tags" {
+    type    = "text[]"
+    null    = false
+    default = "{}"
+  }
+
+  column "home" {
+    type = composite.app.address
+  }
+
+  column "balance" {
+    type = domain.app.money_amount
+  }
+
+  column "first_name" {
+    type = varchar(100)
+  }
+
+  column "last_name" {
+    type = varchar(100)
+  }
+
+  column "full_name" {
+    type      = text
+    generated = "(COALESCE(first_name, ''::character varying)::text || ' '::text) || COALESCE(last_name, ''::character varying)::text"
+  }
+
+  column "secret" {
+    type        = text
+    storage     = EXTERNAL
+    compression = pglz
+  }
+
+  column "score" {
+    type = double_precision
+  }
+
+  column "n" {
+    type     = smallint
+    identity = { generated = BY_DEFAULT, min = -5, max = 500, cache = 3, cycle = true }
+  }
+
+  primary_key {
+    columns = [column.id]
+  }
+
+  foreign_key "users_org_fk" {
+    columns            = [column.org_id]
+    references         = [table.app.orgs.column.id]
+    on_delete          = CASCADE
+    deferrable         = true
+    initially_deferred = true
+    comment            = "owning org"
+  }
+
+  unique "users_email_org_key" {
+    columns = [column.org_id, column.email]
+    include = [column.status]
+    with    = { fillfactor = 90 }
+  }
+
+  check "users_score_check" {
+    expr       = "score >= 0::double precision AND score <= 100::double precision"
+    no_inherit = true
+  }
+
+  check "users_status_check" {
+    expr      = "status <> 'deleted'::app.status OR secret IS NULL"
+    not_valid = true
+  }
+
+  index "users_lower_email_idx" {
+    where = "status <> 'deleted'::app.status"
+
+    key {
+      expr    = "lower(email::text)"
+      desc    = true
+      nulls   = LAST
+      opclass = text_pattern_ops
+    }
+  }
+
+  index "users_name_idx" {
+    include = [column.email]
+    with    = { fillfactor = 70 }
+
+    key {
+      column  = column.last_name
+      collate = "C"
+    }
+
+    key {
+      column = column.first_name
+      desc   = true
+    }
+
+    key {
+      expr  = "(score + 1::double precision)"
+      nulls = FIRST
+    }
+  }
+
+  index "users_tags_idx" {
+    columns = [column.tags]
+    using   = gin
+    comment = "tag search"
+  }
+
+  policy "users_admin" {
+    for   = DELETE
+    as    = RESTRICTIVE
+    to    = [role.omt_rt_admin, role.omt_rt_worker]
+    using = "true"
+  }
+
+  policy "users_insert" {
+    for = INSERT
+    to  = [role.omt_rt_web]
+    check = chomp(<<-SQL
+      (EXISTS ( SELECT 1
+         FROM app.orgs o
+        WHERE o.id = users.org_id))
+      SQL)
+  }
+
+  policy "users_org_isolation" {
+    using = "org_id = app.current_org()"
+    check = "org_id = app.current_org()"
+  }
+
+  policy "users_select" {
+    for     = SELECT
+    using   = "status <> 'deleted'::app.status"
+    comment = "hide deleted"
+  }
+
+  trigger "users_audit_ins" {
+    after       = [INSERT]
+    for         = STATEMENT
+    execute     = function.app.audit_row
+    args        = ["insert", "x'y"]
+    referencing = { new_table = "new_rows" }
+  }
+
+  trigger "users_truncate" {
+    after   = [TRUNCATE]
+    for     = STATEMENT
+    execute = function.app.audit_row
+    enabled = false
+  }
+}
+
+view "app.active_users" {
+  security_barrier = true
+  comment          = "active users"
+  as = <<-SQL
+    SELECT u.id,
+        u.email,
+        o.name AS org_name
+       FROM app.users u
+         JOIN app.orgs o ON o.id = u.org_id
+      WHERE u.status = 'active'::app.status
+    SQL
+
+  column "id" {}
+
+  column "org_name" {
+    comment = "organisation"
+  }
+}
+
+view "app.counted" {
+  as = <<-SQL
+    SELECT c.org_id,
+        c.n,
+        app.add(c.n::integer, 1) AS n1
+       FROM app.user_counts c
+    SQL
+}
+
+view "app.org_names" {
+  check_option = CASCADED
+  as = <<-SQL
+    SELECT orgs.id,
+        orgs.name
+       FROM app.orgs
+    SQL
+}
+
+view "app.user_counts" {
+  as = <<-SQL
+    SELECT users.org_id,
+        count(*) AS n
+       FROM app.users
+      GROUP BY users.org_id
+    SQL
+}
+
+materialized_view "app.org_stats" {
+  with_data = false
+  comment   = "stats"
+  as = <<-SQL
+    SELECT users.org_id,
+        count(*) AS users
+       FROM app.users
+      GROUP BY users.org_id
+    SQL
+
+  index "org_stats_org_idx" {
+    columns = ["org_id"]
+    unique  = true
+  }
+}
+
+function "app.add_integer_integer" {
+  name = "add"
+
+  arg "a" {
+    type = integer
+  }
+
+  arg "b" {
+    type    = integer
+    default = 1
+  }
+
+  returns    = integer
+  language   = sql
+  volatility = IMMUTABLE
+  strict     = true
+  leakproof  = true
+  comment    = "adds"
+  body       = "RETURN (a + b)"
+}
+
+function "app.add_numeric_numeric" {
+  name = "add"
+
+  arg "a" {
+    type = numeric
+  }
+
+  arg "b" {
+    type = numeric
+  }
+
+  returns    = numeric
+  language   = sql
+  volatility = IMMUTABLE
+  body       = "SELECT a + b"
+}
+
+function "app.audit_row" {
+  returns  = trigger
+  language = plpgsql
+  body     = " BEGIN RETURN NULL; END "
+}
+
+function "app.current_org" {
+  returns    = bigint
+  language   = sql
+  volatility = STABLE
+  parallel   = SAFE
+  body       = " SELECT nullif(current_setting('app.org', true), '')::bigint "
+}
+
+function "app.debug_dump" {
+  returns  = void
+  language = plpgsql
+  body     = " BEGIN RAISE NOTICE 'x'; END "
+}
+
+function "app.on_ddl" {
+  returns  = event_trigger
+  language = plpgsql
+  body     = " BEGIN END "
+}
+
+function "app.org_users" {
+  arg "p_org" {
+    type = bigint
+  }
+
+  arg "p_status" {
+    type    = "app.status[]"
+    mode    = VARIADIC
+    default = "{active}"
+  }
+
+  returns_table {
+    column "id" {
+      type = uuid
+    }
+
+    column "email" {
+      type = domain.app.email
+    }
+  }
+
+  language   = sql
+  volatility = STABLE
+  cost       = 20
+  rows       = 50
+  body = chomp(<<-SQL
+    BEGIN ATOMIC
+     SELECT u.id,
+         u.email
+        FROM app.users u
+       WHERE ((u.org_id = org_users.p_org) AND (u.status = ANY (org_users.p_status)));
+    END
+    SQL)
+}
+
+function "app.split_name" {
+  arg "full_name" {
+    type = text
+  }
+
+  arg "first" {
+    type = text
+    mode = OUT
+  }
+
+  arg "last" {
+    type = text
+    mode = OUT
+  }
+
+  language   = sql
+  volatility = IMMUTABLE
+  body       = " SELECT split_part(full_name, ' ', 1), split_part(full_name, ' ', 2) "
+}
+
+function "app.touch" {
+  returns  = trigger
+  language = plpgsql
+  security = DEFINER
+  set      = { search_path = "pg_catalog, app", work_mem = "64MB" }
+  body     = " BEGIN NEW.updated_at := now(); RETURN NEW; END "
+}
+
+function "app.user_counts_insert" {
+  returns  = trigger
+  language = plpgsql
+  body     = " BEGIN RETURN NEW; END "
+}
+
+function "app.users_of_org" {
+  arg {
+    type = bigint
+  }
+
+  returns  = table.app.users
+  setof    = true
+  language = sql
+  body     = "SELECT * FROM app.users WHERE org_id = $1"
+}
+
+procedure "app.archive" {
+  arg "p_before" {
+    type = timestamptz
+  }
+
+  arg "p_count" {
+    type    = integer
+    mode    = INOUT
+    default = 0
+  }
+
+  language = plpgsql
+  comment  = "archives"
+  body     = " BEGIN p_count := 0; END "
+}
+
+trigger "user_counts_insert" {
+  on         = view.app.user_counts
+  instead_of = [INSERT]
+  for        = ROW
+  execute    = function.app.user_counts_insert
+}
+
+revoke {
+  privileges = [EXECUTE]
+  on         = [function.app.add_integer_integer, function.app.debug_dump]
+  from       = [PUBLIC]
+}
+
+revoke {
+  privileges = [USAGE]
+  on         = [enum.app.status]
+  from       = [PUBLIC]
+}
+
+grant {
+  privileges = [SELECT]
+  on         = [view.app.active_users]
+  to         = [role.omt_rt_web]
+}
+
+grant {
+  privileges = [SELECT]
+  on         = [table.app.orgs, view.app.active_users]
+  columns    = ["id"]
+  to         = [role.omt_rt_worker]
+}
+
+grant {
+  privileges = [SELECT, INSERT, UPDATE]
+  on         = [table.app.users]
+  to         = [role.omt_rt_web]
+}
+
+grant {
+  privileges        = [SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER]
+  on                = [table.app.orgs]
+  to                = [role.omt_rt_admin]
+  with_grant_option = true
+}
+
+grant {
+  privileges = [SELECT, UPDATE]
+  on         = [table.app.orgs]
+  columns    = ["name"]
+  to         = [role.omt_rt_worker]
+}
+
+grant {
+  privileges = [SELECT, USAGE]
+  on         = [sequence.app.invoice_no]
+  to         = [role.omt_rt_worker]
+}
+
+grant {
+  privileges = [EXECUTE]
+  on         = [function.app.debug_dump]
+  to         = [role.omt_rt_admin]
+}
+
+grant {
+  privileges        = [EXECUTE]
+  on                = [function.app.add_integer_integer]
+  to                = [role.omt_rt_web]
+  with_grant_option = true
+}
+
+grant {
+  privileges = [EXECUTE]
+  on         = [procedure.app.archive]
+  to         = [role.omt_rt_worker]
+}
+
+grant {
+  privileges = [USAGE]
+  on         = [enum.app.status]
+  to         = [role.omt_rt_web]
+}
+
+grant {
+  privileges = [USAGE]
+  on         = [schema.app]
+  to         = [role.omt_rt_web, role.omt_rt_worker]
+}
+
+grant {
+  privileges        = [CREATE]
+  on                = [schema.app]
+  to                = [role.omt_rt_admin]
+  with_grant_option = true
+}
+
+data "app.statuses" {
+  rows = [
+    { code = "a", label = "Active", sort = 1 },
+    { code = "d", label = "Disabled", sort = null },
+  ]
+}
+
+schema "audit" {}
+
+table "audit.log" {
+  replica_identity = FULL
+
+  column "id" {
+    type = bigserial
+  }
+
+  column "at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+
+  column "actor" {
+    type = text
+  }
+
+  primary_key {
+    columns = [column.id]
+  }
+}
+
+table "audit.login_log" {
+  inherits = [table.audit.log]
+
+  column "id" {
+    type    = bigint
+    null    = false
+    default = sql("nextval('audit.log_id_seq'::regclass)")
+  }
+
+  column "at" {
+    type    = timestamptz
+    null    = false
+    default = sql("now()")
+  }
+
+  column "actor" {
+    type = text
+  }
+
+  column "ip" {
+    type = inet
+  }
+}
+
+grant {
+  privileges = [SELECT]
+  on         = [table.audit.log]
+  to         = [role.omt_rt_worker]
+}
+
+schema "public" {}
+
+grant {
+  privileges = [CREATE]
+  on         = [schema.public]
+  to         = [PUBLIC]
+}
+
+event_trigger "omt_rt_ddl" {
+  on      = ddl_command_end
+  tags    = ["ALTER TABLE", "CREATE TABLE"]
+  execute = function.app.on_ddl
+  enabled = ALWAYS
+  comment = "ddl hook"
+}
