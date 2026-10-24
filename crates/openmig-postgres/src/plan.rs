@@ -52,6 +52,7 @@ pub fn plan(
     for (object, how) in &rebuilds {
         planner.rebuild(object, *how)?;
     }
+    planner.restore_replica_identities(&changes);
     let steps = order::sort(planner.steps, &rekeyed, desired, &opts)?;
     Ok(finish(steps, desired))
 }
@@ -73,6 +74,8 @@ pub(crate) struct Planner<'a> {
     pub split_fks: BTreeSet<ObjectRef>,
     /// Columns and domains whose default is dropped and set again around a blocking change.
     pub default_rebuilt: BTreeSet<ObjectRef>,
+    /// The desired model's dependencies, by dependent object.
+    pub des_dependencies: BTreeMap<&'a ObjectRef, Vec<&'a ObjectRef>>,
 }
 
 impl<'a> Planner<'a> {
@@ -92,7 +95,11 @@ impl<'a> Planner<'a> {
             inline_fks: BTreeSet::new(),
             split_fks: BTreeSet::new(),
             default_rebuilt: BTreeSet::new(),
+            des_dependencies: BTreeMap::new(),
         };
+        for d in &des.dependencies {
+            p.des_dependencies.entry(&d.from).or_default().push(&d.to);
+        }
         let mut dropped_tables = BTreeSet::new();
         for c in changes {
             match c {
@@ -141,12 +148,30 @@ impl<'a> Planner<'a> {
         self.steps.push(step);
     }
 
+    /// Clear the destructive marks of the steps from `first` on: what they drop is created
+    /// again without losing data.
+    pub fn keep_data(&mut self, first: usize) {
+        for step in &mut self.steps[first..] {
+            for st in &mut step.statements {
+                st.destructive = None;
+            }
+        }
+    }
+
     fn change(&mut self, change: &Change) -> Result<(), Error> {
         match change {
             Change::Create(r) => self.create(r),
             Change::Drop(r) => self.drop(r),
-            Change::Recreate { object, .. } => {
+            Change::Recreate {
+                object,
+                destructive,
+                ..
+            } => {
+                let first = self.steps.len();
                 self.drop(object)?;
+                if !destructive {
+                    self.keep_data(first);
+                }
                 self.create(object)
             }
             Change::Alter { object, ops } => self.alter(object, ops),
@@ -158,6 +183,47 @@ impl<'a> Planner<'a> {
                 self.data(table, rows);
                 Ok(())
             }
+        }
+    }
+
+    /// A table whose replica identity index is dropped falls back to no replica identity; set it
+    /// again when the plan recreates that index (or constraint) on a table that stays.
+    fn restore_replica_identities(&mut self, changes: &[Change]) {
+        let altered: BTreeSet<ObjectRef> = changes
+            .iter()
+            .filter_map(|c| match c {
+                Change::Alter { object, ops }
+                    if ops.contains(&crate::diff::AlterOp::ReplicaIdentity) =>
+                {
+                    Some(object.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let mut restore = Vec::new();
+        for schema in self.des.schemas.values() {
+            for t in schema.tables.values() {
+                let crate::model::ReplicaIdentity::Index(index) = &t.replica_identity else {
+                    continue;
+                };
+                let table = ObjectRef::new(ObjectKind::Table, [&schema.name, &t.name]);
+                let lost = [
+                    ObjectKind::Index,
+                    ObjectKind::PrimaryKey,
+                    ObjectKind::Unique,
+                ]
+                .into_iter()
+                .any(|k| {
+                    self.removed
+                        .contains(&ObjectRef::new(k, [&schema.name, &t.name, index]))
+                });
+                if lost && !self.removed.contains(&table) && !altered.contains(&table) {
+                    restore.push((table, t.replica_identity.clone()));
+                }
+            }
+        }
+        for (table, identity) in restore {
+            self.replica_identity_step(&table, &identity);
         }
     }
 

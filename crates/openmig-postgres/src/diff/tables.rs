@@ -115,12 +115,10 @@ impl Differ<'_> {
         match (&cur.generated, &des.generated) {
             (None, None) => {}
             (Some(a), Some(b)) if a == b => {}
-            (Some(a), Some(b)) if a.kind == b.kind => {
-                let supported = match a.kind {
-                    GeneratedKind::Stored => self.opts.major >= 17,
-                    GeneratedKind::Virtual => self.opts.major >= 18,
-                };
-                if !supported {
+            (Some(a), Some(b))
+                if a.kind == GeneratedKind::Stored && b.kind == GeneratedKind::Stored =>
+            {
+                if self.opts.major < 17 {
                     self.unsupported(
                         r,
                         "changing the expression of a generated column needs PostgreSQL 17 or later",
@@ -129,12 +127,15 @@ impl Differ<'_> {
                 }
                 ops.push(AlterOp::Generated);
             }
+            (Some(_), Some(_)) => {
+                // Generated values are recomputed, so nothing is lost; `SET EXPRESSION` is
+                // refused for virtual columns of tables with checks.
+                self.recreate(r, "the kind or expression of a generated column changed");
+                return;
+            }
             (Some(a), None) if a.kind == GeneratedKind::Stored => ops.push(AlterOp::Generated),
-            (Some(_), _) => {
-                self.unsupported(
-                    r,
-                    "a generated column cannot be changed into this kind of column",
-                );
+            (Some(_), None) => {
+                self.unsupported(r, "a virtual generated column cannot become a plain column");
                 return;
             }
             (None, Some(_)) => {

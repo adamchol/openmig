@@ -244,11 +244,7 @@ impl Planner<'_> {
                 let first = self.steps.len();
                 self.drop(r)?;
                 if !destructive {
-                    for step in &mut self.steps[first..] {
-                        for st in &mut step.statements {
-                            st.destructive = None;
-                        }
-                    }
+                    self.keep_data(first);
                 }
                 self.create(r)
             }
@@ -284,7 +280,7 @@ impl Planner<'_> {
                 format!("Set the default of {}", noun(r)),
             );
             set.requires.push(r.clone());
-            set.requires.extend(self.des.dependencies_of(r).cloned());
+            set.requires.extend(self.des_deps(r));
             set.after_removal_of.push(default_ref(r));
             set.hints.push(default);
             self.push(set);

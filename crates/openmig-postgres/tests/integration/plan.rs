@@ -471,6 +471,11 @@ fixtures!(
     name_conflicts,
     composite_used_unsupported,
     duplicate_unique,
+    primary_key_renamed,
+    replica_identity_index,
+    nulls_not_distinct,
+    pg17_features,
+    pg18_features,
 );
 
 /// Apply a plan built from a decoded schema the way `normalize` does: one transaction with a

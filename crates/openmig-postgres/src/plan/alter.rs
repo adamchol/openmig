@@ -387,7 +387,7 @@ impl Planner<'_> {
         step.requires
             .push(r2(ObjectKind::Table, &table.schema, &table.name));
         step.requires.extend(type_refs(self.des, &des.data_type));
-        step.requires.extend(self.des.dependencies_of(r).cloned());
+        step.requires.extend(self.des_deps(r));
         step.hints.extend(des.default.iter().cloned());
         self.push(step);
     }
@@ -407,7 +407,7 @@ impl Planner<'_> {
                 .filter(|x| x.as_str() != crate::model::PUBLIC)
                 .map(|x| ObjectRef::new(ObjectKind::Role, [x])),
         );
-        step.requires.extend(self.des.dependencies_of(r).cloned());
+        step.requires.extend(self.des_deps(r));
         step.hints.extend(des.using.iter().cloned());
         step.hints.extend(des.check.iter().cloned());
         self.push(step);
@@ -430,7 +430,7 @@ impl Planner<'_> {
             step.creates.push(r.clone());
             step.requires
                 .extend(functions_named(self.des, &des.function));
-            step.requires.extend(self.des.dependencies_of(r).cloned());
+            step.requires.extend(self.des_deps(r));
             step.hints.extend(des.when.iter().cloned());
         }
         // `CREATE OR REPLACE TRIGGER` resets the firing mode.
@@ -458,7 +458,7 @@ impl Planner<'_> {
                     ObjectRef::new(ObjectKind::Column, [&name.schema, &name.name, &c.name])
                 }),
             );
-            step.requires.extend(self.des.dependencies_of(r).cloned());
+            step.requires.extend(self.des_deps(r));
             step.hints.push(des.query.clone());
             self.push(step);
         } else if ops.contains(&AlterOp::ViewOptions) {
@@ -613,7 +613,7 @@ impl Planner<'_> {
         }
         if !step.statements.is_empty() {
             step.releases.push(r.clone());
-            step.requires.extend(self.des.dependencies_of(r).cloned());
+            step.requires.extend(self.des_deps(r));
             step.hints.extend(des.default.iter().cloned());
             self.push(step);
         }

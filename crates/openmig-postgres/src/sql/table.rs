@@ -8,6 +8,12 @@ use crate::model::{
 };
 use std::collections::BTreeMap;
 
+/// Whether a check can be written inside `CREATE TABLE`: anything but a `NOT VALID` one.
+/// `NOT ENFORCED` constraints always count as not validated.
+pub(crate) fn inline_check(c: &Check) -> bool {
+    c.validated || !c.enforced
+}
+
 /// Unique constraints that can be written inside `CREATE TABLE`. Within one `CREATE TABLE`,
 /// PostgreSQL silently drops a unique constraint on the same columns as the primary key or an
 /// earlier unique constraint, so those are added afterwards.
@@ -47,7 +53,7 @@ pub(crate) fn create_table(
     items.extend(
         t.checks
             .values()
-            .filter(|c| c.validated)
+            .filter(|c| inline_check(c))
             .map(check_definition),
     );
     items.extend(t.exclusions.values().map(exclusion_definition));

@@ -31,6 +31,8 @@ enum Slot {
     /// So do types (including the row types of relations).
     Type(String, String),
     Constraint(String, String, String),
+    /// A table has at most one primary key.
+    PrimaryKeyOf(String, String),
     Routine(String, String),
     Exact(ObjectRef),
 }
@@ -47,7 +49,12 @@ fn slots(r: &ObjectRef) -> Vec<Slot> {
         (K::Enum | K::Domain, [s, n]) => vec![Slot::Type(s.clone(), n.clone())],
         (K::Function | K::Procedure, [s, sig]) => vec![Slot::Routine(s.clone(), sig.clone())],
         (K::Index, [s, _, i]) => vec![Slot::Relation(s.clone(), i.clone())],
-        (K::PrimaryKey | K::Unique | K::Exclusion, [s, t, c]) => vec![
+        (K::PrimaryKey, [s, t, c]) => vec![
+            Slot::Relation(s.clone(), c.clone()),
+            Slot::Constraint(s.clone(), t.clone(), c.clone()),
+            Slot::PrimaryKeyOf(s.clone(), t.clone()),
+        ],
+        (K::Unique | K::Exclusion, [s, t, c]) => vec![
             Slot::Relation(s.clone(), c.clone()),
             Slot::Constraint(s.clone(), t.clone(), c.clone()),
         ],

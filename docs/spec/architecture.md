@@ -92,9 +92,10 @@ nested in it. `plan` turns changes into ordered statements:
 * Tables are never rebuilt. Columns: `ADD/DROP COLUMN`, `ALTER COLUMN TYPE ... USING col::type`
   (with `COLLATE` for collation changes; an existing default is dropped first and set again),
   `SET/DROP NOT NULL`, `SET/DROP DEFAULT`, identity changes (`ADD GENERATED ... AS IDENTITY`,
-  `SET GENERATED`, `SET <sequence option>`, `DROP IDENTITY`), `SET EXPRESSION` (17+, virtual
-  columns 18+), `DROP EXPRESSION` (stored generated column to plain column), `SET STORAGE`,
-  `SET COMPRESSION`. Column order differences are ignored. Columns of partitions, and columns an
+  `SET GENERATED`, `SET <sequence option>`, `DROP IDENTITY`), `SET EXPRESSION` for stored
+  generated columns (17+), `DROP EXPRESSION` (stored generated column to plain column),
+  `SET STORAGE`, `SET COMPRESSION`. Other generated column changes (virtual expressions, stored
+  to virtual and back) drop and add the column again, which loses nothing. Column order differences are ignored. Columns of partitions, and columns an
   `INHERITS` child gets from its parents, are managed through the parent.
 * `CREATE TABLE` carries the columns, primary key, unique constraints (except one on the same
   columns as the primary key or an earlier unique constraint, which PostgreSQL would silently
@@ -119,8 +120,11 @@ nested in it. `plan` turns changes into ordered statements:
   `CREATE OR REPLACE TRIGGER` (14+), except constraint triggers (drop + create); the firing mode
   (`ENABLE`, `DISABLE`, `ENABLE REPLICA`, `ENABLE ALWAYS`) is set again after a replace.
 * Indexes, checks, foreign keys, unique, primary key and exclusion constraints: drop + create on
-  change; `VALIDATE CONSTRAINT` when a `NOT VALID` constraint becomes valid. Domain checks
-  likewise with `ALTER DOMAIN`.
+  change; `VALIDATE CONSTRAINT` when a `NOT VALID` constraint becomes valid (`NOT ENFORCED`
+  constraints, PostgreSQL 18, always count as not validated). Domain checks likewise with
+  `ALTER DOMAIN`. A table has one primary key: a renamed one is dropped before the new one is
+  added. Recreating the index (or constraint) used as `REPLICA IDENTITY USING INDEX` sets the
+  replica identity again.
 * With `concurrent_indexes`, index creation and removal on tables and materialized views that
   exist before and after the plan (and are not partitioned) use `CONCURRENTLY`; in `generate`
   each creation is preceded by `DROP INDEX CONCURRENTLY IF EXISTS` so that a failed file can be

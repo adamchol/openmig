@@ -134,6 +134,7 @@ async fn dialo_replay() {
         let b = session(&url_b).await.inspect(&scope).await.unwrap();
         let a = session(&url_a).await.inspect(&scope).await.unwrap();
         let result = async {
+            let planning = Instant::now();
             let plan = diff_and_plan(
                 &a,
                 &b,
@@ -144,6 +145,7 @@ async fn dialo_replay() {
                 false,
             )
             .map_err(|e| format!("planning failed: {e}"))?;
+            let planned_in = planning.elapsed();
             let db = crate::common::TestDb {
                 name: "dialo".into(),
                 url: url_a.clone(),
@@ -172,11 +174,11 @@ async fn dialo_replay() {
             if comparable(&after, &scope) != comparable(&b, &scope) {
                 return Err("models differ after applying".into());
             }
-            Ok(plan.len())
+            Ok((plan.len(), planned_in))
         }
         .await;
         match result {
-            Ok(n) => eprintln!("{i:3} {name}: ok ({n} statements)"),
+            Ok((n, t)) => eprintln!("{i:3} {name}: ok ({n} statements, planned in {t:?})"),
             Err(e) => {
                 eprintln!("{i:3} {name}: FAILED\n{e}");
                 failures.push(format!("{name}: {}", e.lines().next().unwrap_or_default()));

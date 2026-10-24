@@ -142,18 +142,25 @@ impl Differ<'_> {
         }
     }
 
+    /// Drop and create `object` again without losing data.
     pub fn recreate(&mut self, object: ObjectRef, reason: impl Into<String>) {
         self.changes.push(Change::Recreate {
             object,
             reason: reason.into(),
+            destructive: false,
         });
     }
 
-    /// A change PostgreSQL cannot make in place: recreate when allowed, else an error.
+    /// A change PostgreSQL cannot make in place: recreate (losing data) when allowed, else an
+    /// error.
     pub fn unsupported(&mut self, object: ObjectRef, reason: impl Into<String>) {
         let reason = reason.into();
         if self.opts.allow_recreate {
-            self.recreate(object, reason);
+            self.changes.push(Change::Recreate {
+                object,
+                reason,
+                destructive: true,
+            });
         } else {
             self.errors.push(Error::Unsupported {
                 object,

@@ -17,8 +17,12 @@ pub enum Change {
     /// The object exists only in the current model.
     Drop(ObjectRef),
     /// The object cannot be changed in place: drop the current definition and create the
-    /// desired one.
-    Recreate { object: ObjectRef, reason: String },
+    /// desired one. `destructive` when that loses data (rows of a table, values of a column).
+    Recreate {
+        object: ObjectRef,
+        reason: String,
+        destructive: bool,
+    },
     /// In-place changes; values come from the desired model unless the op carries them.
     Alter {
         object: ObjectRef,
@@ -238,7 +242,7 @@ impl ChangeInfo for Change {
         match self {
             Change::Create(o) => format!("create {o}"),
             Change::Drop(o) => format!("drop {o}"),
-            Change::Recreate { object, reason } => format!("recreate {object}: {reason}"),
+            Change::Recreate { object, reason, .. } => format!("recreate {object}: {reason}"),
             Change::Alter { object, ops } => {
                 let ops: Vec<String> = ops.iter().map(AlterOp::name).collect();
                 format!("alter {object}: {}", ops.join(", "))
@@ -256,14 +260,11 @@ impl ChangeInfo for Change {
     fn destructive(&self) -> Option<String> {
         match self {
             Change::Drop(o) => drop_destroys(o),
-            Change::Recreate { object, .. }
-                if matches!(object.kind, ObjectKind::Table | ObjectKind::Column) =>
-            {
-                Some(format!("recreates {object} and loses its data"))
-            }
-            Change::Recreate { object, .. } if object.kind == ObjectKind::Enum => {
-                Some(format!("recreates {object}"))
-            }
+            Change::Recreate {
+                object,
+                destructive: true,
+                ..
+            } => Some(format!("recreates {object} and loses its data")),
             Change::Data { table, rows } if !rows.delete.is_empty() => {
                 Some(format!("deletes {} rows from {table}", rows.delete.len()))
             }

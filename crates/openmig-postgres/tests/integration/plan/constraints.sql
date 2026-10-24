@@ -28,7 +28,7 @@ CREATE TABLE app.t (
   CONSTRAINT t_pkey PRIMARY KEY (id, parent_id) DEFERRABLE,
   CONSTRAINT t_parent_fk FOREIGN KEY (parent_id) REFERENCES app.parent (id) ON DELETE CASCADE,
   CONSTRAINT t_code_fk FOREIGN KEY (amount) REFERENCES app.parent (alt) MATCH FULL DEFERRABLE INITIALLY DEFERRED,
-  CONSTRAINT t_amount_key UNIQUE NULLS NOT DISTINCT (amount, id) INCLUDE (parent_id),
+  CONSTRAINT t_amount_key UNIQUE (amount, id) INCLUDE (parent_id),
   CONSTRAINT t_amount_check CHECK (amount < 1000),
   CONSTRAINT t_no_overlap EXCLUDE USING gist (id WITH =, during WITH &&) WHERE (id > 0)
 );

@@ -113,8 +113,12 @@ pub(super) fn cyclic_foreign_keys(
 }
 
 impl Planner<'_> {
-    fn des_deps(&self, r: &ObjectRef) -> Vec<ObjectRef> {
-        self.des.dependencies_of(r).cloned().collect()
+    /// What `r` depends on in the desired model.
+    pub(super) fn des_deps(&self, r: &ObjectRef) -> Vec<ObjectRef> {
+        self.des_dependencies
+            .get(r)
+            .map(|deps| deps.iter().map(|d| (*d).clone()).collect())
+            .unwrap_or_default()
     }
 
     /// Requirements of a column: its type and what its default or expression uses.
@@ -186,7 +190,7 @@ impl Planner<'_> {
             }
             Object::Check(c) => {
                 let def = sql::check_definition(c);
-                self.add_constraint(r, &def, &[], c.validated, rank::CONSTRAINT);
+                self.add_constraint(r, &def, &[], sql::inline_check(c), rank::CONSTRAINT);
                 if let Some(step) = self.steps.last_mut() {
                     step.hints.push(c.expr.clone());
                 }
@@ -396,7 +400,7 @@ impl Planner<'_> {
         step.creates.extend(
             t.checks
                 .values()
-                .filter(|c| c.validated)
+                .filter(|c| sql::inline_check(c))
                 .map(|c| r3(ObjectKind::Check, s, tn, &c.name)),
         );
         step.creates.extend(
@@ -411,7 +415,7 @@ impl Planner<'_> {
             step.requires.extend(self.column_requires(&cr, c));
             step.hints.extend(Self::column_hints(c));
         }
-        for c in t.checks.values().filter(|c| c.validated) {
+        for c in t.checks.values().filter(|c| sql::inline_check(c)) {
             step.requires
                 .extend(self.des_deps(&r3(ObjectKind::Check, s, tn, &c.name)));
             step.hints.push(c.expr.clone());
@@ -449,7 +453,7 @@ impl Planner<'_> {
                 );
             }
         }
-        for c in t.checks.values().filter(|c| !c.validated) {
+        for c in t.checks.values().filter(|c| !sql::inline_check(c)) {
             let cr = r3(ObjectKind::Check, s, tn, &c.name);
             self.add_constraint(&cr, &sql::check_definition(c), &[], false, rank::CONSTRAINT);
         }
@@ -636,7 +640,7 @@ impl Planner<'_> {
             r,
             &sql::foreign_key_definition(fk),
             &fk.columns,
-            fk.validated,
+            fk.validated || !fk.enforced,
             rank::FOREIGN_KEY,
         );
         let requires = self.foreign_key_requires(r, fk);
