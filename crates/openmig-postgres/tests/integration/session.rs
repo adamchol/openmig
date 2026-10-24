@@ -26,7 +26,7 @@ async fn version_and_capabilities() {
 
 #[tokio::test]
 async fn connection_errors_are_reported() {
-    let Some(admin) = admin_url() else {
+    let Some(admin) = admin_url().await else {
         return;
     };
     let url = url_for(&admin, "omt_does_not_exist");
@@ -205,7 +205,7 @@ async fn error_mapping() {
 #[tokio::test]
 async fn scratch_reset() {
     let _roles = ROLES.write().await;
-    let Some(admin) = admin_url() else {
+    let Some(admin) = admin_url().await else {
         return;
     };
     drop_role("omt_scratch_role").await;

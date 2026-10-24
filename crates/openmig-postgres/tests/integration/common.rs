@@ -6,14 +6,23 @@ use tokio::sync::RwLock;
 /// drops every role and holds the write guard.
 pub static ROLES: RwLock<()> = RwLock::const_new(());
 
-pub fn admin_url() -> Option<String> {
-    match std::env::var("OPENMIG_TEST_PG_URL") {
-        Ok(url) if !url.is_empty() => Some(url),
-        _ => {
-            eprintln!("skipping: set OPENMIG_TEST_PG_URL to run PostgreSQL integration tests");
-            None
-        }
+static SERVER: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
+/// The server named by `OPENMIG_TEST_PG_URL`, or else one PostgreSQL server from the testkit pool
+/// kept for the whole test process.
+pub async fn admin_url() -> Option<String> {
+    if let Ok(url) = std::env::var("OPENMIG_TEST_PG_URL")
+        && !url.is_empty()
+    {
+        return Some(url);
     }
+    let url = SERVER
+        .get_or_init(|| async {
+            let lease = Box::leak(Box::new(openmig_testkit::postgres().await));
+            lease.url().to_owned()
+        })
+        .await;
+    Some(url.clone())
 }
 
 /// The admin URL with another database.
@@ -31,7 +40,7 @@ pub async fn connect(url: &str, purpose: SessionPurpose) -> PgSession {
 
 pub async fn admin() -> PgSession {
     connect(
-        &admin_url().expect("checked by the caller"),
+        &admin_url().await.expect("checked by the caller"),
         SessionPurpose::Target,
     )
     .await
@@ -90,7 +99,7 @@ impl TestDb {
     /// Create an empty database (dropping a leftover of a previous run). `None` when no server
     /// is configured.
     pub async fn create(name: &str) -> Option<Self> {
-        let admin_url = admin_url()?;
+        let admin_url = admin_url().await?;
         let mut admin = admin().await;
         run(
             &mut admin,
