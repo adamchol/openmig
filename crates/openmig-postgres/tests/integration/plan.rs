@@ -476,6 +476,7 @@ fixtures!(
     nulls_not_distinct,
     pg17_features,
     pg18_features,
+    check_using_function,
 );
 
 /// Apply a plan built from a decoded schema the way `normalize` does: one transaction with a
@@ -875,5 +876,67 @@ async fn scratch_build_from_decoded_rich_schema() {
     drop(scratch);
     drop(lease);
     source.drop().await;
+    crate::common::drop_roles(prefix).await;
+}
+
+/// The rich schema created from an empty database and dropped again, with `generate` plans:
+/// the whole creation order with real dependencies, and the whole teardown order.
+#[tokio::test]
+async fn rich_schema_from_and_to_empty() {
+    let _roles = ROLES.read().await;
+    let prefix = "omp_full_";
+    let Some(rich) = TestDb::create("omp_full_rich").await else {
+        return;
+    };
+    let empty = TestDb::create("omp_full_empty").await.unwrap();
+    crate::common::drop_roles(prefix).await;
+    run(
+        &mut admin().await,
+        &crate::common::with_prefix(RICH_ROLES, prefix),
+    )
+    .await;
+    let major = rich.major().await;
+    let mut sql = RICH.to_owned();
+    for (min, part) in [(15, RICH_15), (17, RICH_17), (18, RICH_18)] {
+        if major >= min {
+            sql.push_str(part);
+        }
+    }
+    rich.run(&crate::common::with_prefix(&sql, prefix)).await;
+    let roles: Vec<String> = ["owner", "web", "worker", "admin"]
+        .iter()
+        .map(|r| format!("{prefix}{r}"))
+        .collect();
+    let f = Fixture {
+        scope: Scope {
+            declared_roles: roles,
+            data_tables: vec![DataTable {
+                path: vec!["app".into(), "statuses".into()],
+                columns: Vec::new(),
+                mode: Some(DataSync::Sync),
+            }],
+            data_max_rows: 100,
+            ..Scope::default()
+        },
+        ..Fixture::default()
+    };
+    let full = rich.inspect(&f.scope).await;
+    let nothing = empty.inspect(&f.scope).await;
+    let none = RenameSet::default();
+    converge(
+        "rich from empty",
+        &empty,
+        &nothing,
+        &full,
+        &f,
+        &none,
+        &[],
+        &[],
+    )
+    .await;
+    let plan = converge("rich to empty", &rich, &full, &nothing, &f, &none, &[], &[]).await;
+    assert!(plan.destructive().count() > 0);
+    rich.drop().await;
+    empty.drop().await;
     crate::common::drop_roles(prefix).await;
 }

@@ -272,3 +272,64 @@ fn plans_are_deterministic() {
     let plan = sql(&first);
     assert!(position(&plan, "TABLE \"app\".\"b\"") < position(&plan, "TABLE \"app\".\"a\""));
 }
+
+#[test]
+fn scratch_builds_order_by_identifiers_in_sql() {
+    use crate::model::{Function, FunctionBody, Parallel, Returns, Volatility};
+    let function = |name: &str, body: &str| Function {
+        name: name.into(),
+        args: vec![],
+        returns: Some(Returns::Type {
+            data_type: "integer".into(),
+            setof: false,
+        }),
+        language: "sql".into(),
+        body: FunctionBody::Definition(body.into()),
+        volatility: Volatility::Volatile,
+        strict: false,
+        security_definer: false,
+        leakproof: false,
+        parallel: Parallel::Unsafe,
+        cost: "100".into(),
+        rows: "0".into(),
+        window: false,
+        config: Default::default(),
+        comment: None,
+        owner: String::new(),
+        acl: Default::default(),
+    };
+    let mut items = table("items", &[("code", "integer")]);
+    items.columns[0].default = Some("app.next_code()".into());
+    let mut desired = db(vec![items]);
+    let schema = desired.schemas.get_mut("app").unwrap();
+    // The body reads the table, the table's default calls the function: the default wins.
+    schema.functions.insert(
+        "next_code()".into(),
+        function("next_code", "SELECT max(code) + 1 FROM app.items"),
+    );
+    schema.views.insert(
+        "v".into(),
+        View {
+            name: "v".into(),
+            query: "SELECT code FROM items".into(),
+            ..View::default()
+        },
+    );
+    let mut current = Database {
+        server_major: 17,
+        ..Database::default()
+    };
+    current
+        .schemas
+        .insert("public".into(), Schema::new("public"));
+    let plan = sql(&plan_with(&current, &desired, PlanMode::Scratch).unwrap());
+    let f = position(&plan, "CREATE FUNCTION \"app\".\"next_code\"");
+    let t = position(&plan, "CREATE TABLE \"app\".\"items\"");
+    assert!(
+        plan[0].starts_with("SET check_function_bodies = off"),
+        "{plan:#?}"
+    );
+    assert!(f < t, "{plan:#?}");
+    // Unqualified names resolve through the search path, which does not include `app`.
+    assert!(position(&plan, "CREATE VIEW \"app\".\"v\"") > 0);
+}

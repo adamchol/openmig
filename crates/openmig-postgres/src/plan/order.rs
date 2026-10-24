@@ -5,6 +5,7 @@
 //! * a step releasing X (dropping or redefining it) before steps removing what X depends on in
 //!   the current model (dependants are dropped first);
 //! * a step removing X before a step creating an object that takes the same name;
+//! * removals of objects before the drop of the schema or relation containing them;
 //! * explicit `after_removal_of` / `before_removal_of` constraints;
 //! * renames before every other step on the renamed object;
 //! * every other change of a table before its rows are written; rows of referenced tables are
@@ -121,6 +122,8 @@ pub(super) fn sort(
         }
     }
 
+    container_edges(&steps, &mut graph, &ids);
+
     let mut slot_removers: BTreeMap<Slot, Vec<usize>> = BTreeMap::new();
     for (i, s) in steps.iter().enumerate() {
         if s.kind == StepKind::Rename {
@@ -196,16 +199,23 @@ pub(super) fn sort(
         .cloned()
         .collect();
     let names = NameIndex::new(des, &search_path);
-    for (i, s) in steps.iter().enumerate() {
-        let routine = matches!(s.subject.kind, ObjectKind::Function | ObjectKind::Procedure);
-        if s.kind == StepKind::EnumValues || !(opts.mode == PlanMode::Scratch || routine) {
-            continue;
-        }
-        for text in &s.hints {
-            for r in names.lookup(text) {
-                for &p in creators.get(&r).into_iter().flatten() {
-                    if p != i {
-                        graph.soft_edge(ids[p], ids[i]);
+    let routine = |s: &Step| matches!(s.subject.kind, ObjectKind::Function | ObjectKind::Procedure);
+    // Expressions are checked when their object is created; function bodies are not (with
+    // `check_function_bodies = off`), so their guesses go last and lose conflicts.
+    for bodies in [false, true] {
+        for (i, s) in steps.iter().enumerate() {
+            if routine(s) != bodies
+                || s.kind == StepKind::EnumValues
+                || !(opts.mode == PlanMode::Scratch || bodies)
+            {
+                continue;
+            }
+            for text in &s.hints {
+                for r in names.lookup(text) {
+                    for &p in creators.get(&r).into_iter().flatten() {
+                        if p != i {
+                            graph.soft_edge(ids[p], ids[i]);
+                        }
                     }
                 }
             }
@@ -230,6 +240,50 @@ pub(super) fn sort(
     })?;
     let mut slots: Vec<Option<Step>> = steps.into_iter().map(Some).collect();
     Ok(order.into_iter().filter_map(|i| slots[i].take()).collect())
+}
+
+/// Objects are removed before the schema or relation that contains them is dropped. The model's
+/// dependencies leave out these container edges.
+fn container_edges(steps: &[Step], graph: &mut DepGraph<usize>, ids: &[NodeId]) {
+    let mut schemas: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut relations: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for (i, s) in steps.iter().enumerate() {
+        for r in &s.removes {
+            match (r.kind, r.path.as_slice()) {
+                (ObjectKind::Schema, [n]) => {
+                    schemas.insert(n, i);
+                }
+                (
+                    ObjectKind::Table
+                    | ObjectKind::View
+                    | ObjectKind::MaterializedView
+                    | ObjectKind::Composite
+                    | ObjectKind::Domain,
+                    [sc, n],
+                ) => {
+                    relations.insert((sc, n), i);
+                }
+                _ => {}
+            }
+        }
+    }
+    for (i, s) in steps.iter().enumerate() {
+        for r in &s.removes {
+            let containers = match r.path.as_slice() {
+                [sc, _] => [schemas.get(sc.as_str()), None],
+                [sc, rel, _] => [
+                    schemas.get(sc.as_str()),
+                    relations.get(&(sc.as_str(), rel.as_str())),
+                ],
+                _ => [None, None],
+            };
+            for &d in containers.into_iter().flatten() {
+                if d != i {
+                    graph.edge(ids[i], ids[d]);
+                }
+            }
+        }
+    }
 }
 
 /// Rows are written after every other change of their table. Rows of a referenced table are
