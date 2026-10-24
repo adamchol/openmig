@@ -1,0 +1,11 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/vars.hcl\",\n\"variable \\\"dialo_db\\\" {\\n  type = string\\n}\\n\")])"
+---
+  × variable `dialo_db` has no value
+   ╭─[schema/vars.hcl:1:1]
+ 1 │ variable "dialo_db" {
+   · ───────────────────
+ 2 │   type = string
+   ╰────
+  help: give it a `default`, or set it with `--var dialo_db=...` or in `[databases.<name>.vars]`

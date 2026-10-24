@@ -1,0 +1,45 @@
+---
+source: crates/openmig-hcl/tests/write.rs
+expression: "render(&[table, function, grant])"
+---
+table "app.users" {
+  comment      = "Application users"
+  renamed_from = "app.people"
+
+  column "id" {
+    type     = bigint
+    null     = false
+    identity = { generated = ALWAYS }
+  }
+
+  column "email" {
+    type    = varchar(255)
+    default = sql("lower('x')")
+  }
+
+  column "note" {}
+
+  primary_key {
+    columns = [table.app.users.column.id]
+  }
+}
+
+function "app.touch" {
+  # Keeps updated_at current.
+  language = plpgsql
+  returns  = trigger
+
+  body = <<-SQL
+    BEGIN
+      NEW.updated_at = now();
+      RETURN NEW;
+    END;
+    SQL
+  set = { search_path = "pg_catalog" }
+}
+
+grant {
+  privileges = [SELECT, INSERT]
+  on         = [table.app.users]
+  to         = [role.s3-uploader, PUBLIC]
+}

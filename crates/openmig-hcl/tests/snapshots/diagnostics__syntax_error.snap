@@ -1,0 +1,10 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\n\"role \\\"web\\\" {\\n  login = true\\n  member_of = [role.a,\\n}\\n\")])"
+---
+  × syntax error: invalid expression; expected `"`, `[`, `{`, `-`, `!`, `(`, `_`, `<`, letter or digit
+   ╭─[schema/main.hcl:4:1]
+ 3 │   member_of = [role.a,
+ 4 │ }
+   · ─
+   ╰────

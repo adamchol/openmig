@@ -101,7 +101,10 @@ impl Diagnostics {
             miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
         };
         let mut out = String::new();
-        for d in &self.items {
+        for (i, d) in self.items.iter().enumerate() {
+            if i > 0 {
+                out.push('\n');
+            }
             let report = Rendered::new(d, sources);
             if handler.render_report(&mut out, &report).is_err() {
                 let _ = writeln!(out, "{}", d.message);

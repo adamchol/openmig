@@ -1,0 +1,12 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\nr#\"table \"app.users\" {}\ntable \"audit.users\" {}\ngrant {\n  on = [table.users]\n}\n\"#)])"
+---
+  × ambiguous reference `table.users`, candidates: table.app.users, table.audit.users
+   ╭─[schema/main.hcl:4:9]
+ 3 │ grant {
+ 4 │   on = [table.users]
+   ·         ───────────
+ 5 │ }
+   ╰────
+  help: qualify the reference, e.g. `table.app.users`

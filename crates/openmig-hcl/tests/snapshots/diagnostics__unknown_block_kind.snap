@@ -1,0 +1,11 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\n\"tabel \\\"app.users\\\" {\\n  column \\\"id\\\" {}\\n}\\n\")])"
+---
+  × unknown block kind `tabel`
+   ╭─[schema/main.hcl:1:1]
+ 1 │ tabel "app.users" {
+   · ─────
+ 2 │   column "id" {}
+   ╰────
+  help: did you mean `table`?

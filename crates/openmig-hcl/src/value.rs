@@ -10,6 +10,81 @@ pub enum Number {
     Text(String),
 }
 
+impl Number {
+    /// Classify the text of a number literal (`42`, `-1.5`, `1e10`, `1.50`).
+    ///
+    /// Integer literals that fit `i64` become [`Number::Int`]; decimals whose shortest `f64`
+    /// rendering is the text itself become [`Number::Float`]; every other valid literal is kept
+    /// verbatim as [`Number::Text`]. Returns `None` when `text` is not a number literal.
+    pub fn from_literal(text: &str) -> Option<Number> {
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        let (mantissa, exponent) = match digits.find(['e', 'E']) {
+            Some(i) => (&digits[..i], Some(&digits[i + 1..])),
+            None => (digits, None),
+        };
+        let (int_part, frac_part) = match mantissa.split_once('.') {
+            Some((i, f)) => (i, Some(f)),
+            None => (mantissa, None),
+        };
+        let all_digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        let exponent_ok =
+            exponent.is_none_or(|e| all_digits(e.strip_prefix(['+', '-']).unwrap_or(e)));
+        if !all_digits(int_part) || !frac_part.is_none_or(all_digits) || !exponent_ok {
+            return None;
+        }
+        if frac_part.is_none() && exponent.is_none() {
+            return Some(match text.parse::<i64>() {
+                Ok(i) => Number::Int(i),
+                Err(_) => Number::Text(text.to_owned()),
+            });
+        }
+        match text.parse::<f64>() {
+            Ok(f) if f.is_finite() && f.to_string() == text => Some(Number::Float(f)),
+            _ => Some(Number::Text(text.to_owned())),
+        }
+    }
+
+    /// The number from an arithmetic result: integral values that fit `i64` become
+    /// [`Number::Int`]. Returns `None` for NaN and infinities.
+    pub fn from_f64(f: f64) -> Option<Number> {
+        if !f.is_finite() {
+            return None;
+        }
+        // The range check keeps `as` from saturating: 2^63 is exactly representable.
+        if f.fract() == 0.0 && f >= -(2f64.powi(63)) && f < 2f64.powi(63) {
+            Some(Number::Int(f as i64))
+        } else {
+            Some(Number::Float(f))
+        }
+    }
+
+    /// The value as `f64` (approximate for large integers and long decimals).
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            Number::Int(i) => *i as f64,
+            Number::Float(f) => *f,
+            Number::Text(t) => t.parse().unwrap_or(f64::NAN),
+        }
+    }
+
+    /// The value as `i64` when it is a whole number in range.
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Number::Int(i) => Some(*i),
+            Number::Float(_) | Number::Text(_) => match Number::from_f64(self.as_f64())? {
+                Number::Int(i) => Some(i),
+                _ => None,
+            },
+        }
+    }
+}
+
+impl From<i64> for Number {
+    fn from(i: i64) -> Self {
+        Number::Int(i)
+    }
+}
+
 impl fmt::Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -89,7 +164,7 @@ fn write_segment(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
     if plain {
         write!(f, ".{s}")
     } else {
-        write!(f, "[{s:?}]")
+        write!(f, "[{}]", crate::write::quote(s))
     }
 }
 
@@ -137,5 +212,78 @@ impl Value {
             Value::String(s) => Some(s),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn number_literals() {
+        let cases = [
+            ("0", Some(Number::Int(0))),
+            ("-42", Some(Number::Int(-42))),
+            ("007", Some(Number::Int(7))),
+            ("9223372036854775807", Some(Number::Int(i64::MAX))),
+            (
+                "9223372036854775808",
+                Some(Number::Text("9223372036854775808".into())),
+            ),
+            ("1.5", Some(Number::Float(1.5))),
+            ("-0.25", Some(Number::Float(-0.25))),
+            ("1.50", Some(Number::Text("1.50".into()))),
+            ("1.0", Some(Number::Text("1.0".into()))),
+            ("1e10", Some(Number::Text("1e10".into()))),
+            ("2.5E-3", Some(Number::Text("2.5E-3".into()))),
+            ("1e+5", Some(Number::Text("1e+5".into()))),
+            ("", None),
+            ("-", None),
+            (".5", None),
+            ("1.", None),
+            ("1e", None),
+            ("+1", None),
+            ("0x10", None),
+            ("1 2", None),
+            ("NaN", None),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(Number::from_literal(text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn number_conversions() {
+        assert_eq!(Number::from_f64(2.0), Some(Number::Int(2)));
+        assert_eq!(Number::from_f64(-0.5), Some(Number::Float(-0.5)));
+        assert_eq!(Number::from_f64(1e19), Some(Number::Float(1e19)));
+        assert_eq!(Number::from_f64(f64::NAN), None);
+        assert_eq!(Number::Text("1.50".into()).as_f64(), 1.5);
+        assert_eq!(Number::Text("12".into()).as_i64(), Some(12));
+        assert_eq!(Number::Float(3.0).as_i64(), Some(3));
+        assert_eq!(Number::Float(3.5).as_i64(), None);
+        assert_eq!(Number::Text("1e30".into()).as_i64(), None);
+        assert_eq!(Number::from(7).to_string(), "7");
+        assert_eq!(Number::Text("1.50".into()).to_string(), "1.50");
+    }
+
+    #[test]
+    fn address_display_quotes_odd_labels() {
+        let a = Address::new("table", vec!["app".into(), "odd.name".into()])
+            .child("column", "2fa")
+            .child("index", "x-y");
+        assert_eq!(
+            a.to_string(),
+            r#"table.app["odd.name"].column["2fa"].index.x-y"#
+        );
+        let tricky = Address::new("role", vec!["a\"b ${c}".into()]);
+        assert_eq!(tricky.to_string(), r#"role["a\"b $${c}"]"#);
+        assert_eq!(a.leaf_kind(), "index");
+        assert_eq!(a.leaf_label(), "x-y");
+        assert_eq!(
+            a.root(),
+            Address::new("table", vec!["app".into(), "odd.name".into()])
+        );
     }
 }

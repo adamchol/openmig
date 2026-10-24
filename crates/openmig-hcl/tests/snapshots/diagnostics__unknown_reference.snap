@@ -1,0 +1,21 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\nr#\"table \"app.users\" {\n  column \"email\" {}\n  index \"users_email_idx\" {\n    columns = [column.emial]\n  }\n}\ngrant {\n  on = [table.app.user]\n}\n\"#)])"
+---
+  × unknown column `emial` in `table.app.users`
+   ╭─[schema/main.hcl:4:16]
+ 3 │   index "users_email_idx" {
+ 4 │     columns = [column.emial]
+   ·                ────────────
+ 5 │   }
+   ╰────
+  help: did you mean `column.email`?
+
+  × unknown table `app.user`
+   ╭─[schema/main.hcl:8:9]
+ 7 │ grant {
+ 8 │   on = [table.app.user]
+   ·         ──────────────
+ 9 │ }
+   ╰────
+  help: did you mean `table.app.users`?

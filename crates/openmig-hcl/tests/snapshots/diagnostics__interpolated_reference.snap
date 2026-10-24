@@ -1,0 +1,12 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\n\"table \\\"app.users\\\" {}\\ntable \\\"app.archive\\\" {\\n  comment = \\\"copy of ${table.app.users}\\\"\\n}\\n\")])"
+---
+  × cannot interpolate the reference `table.app.users`
+   ╭─[schema/main.hcl:3:24]
+ 2 │ table "app.archive" {
+ 3 │   comment = "copy of ${table.app.users}"
+   ·                        ───────────────
+ 4 │ }
+   ╰────
+  help: use `table.app.users.name` for the name of the object in the database

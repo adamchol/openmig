@@ -1,0 +1,15 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\n\"role \\\"web\\\" {}\\n\\nrole \\\"web\\\" {\\n  login = true\\n}\\n\")])"
+---
+  × `role.web` is declared more than once
+   ╭─[schema/main.hcl:3:1]
+ 1 │ role "web" {}
+   · ─────┬────
+   ·      ╰── first declared here
+ 2 │ 
+ 3 │ role "web" {
+   · ─────┬────
+   ·      ╰── declared again here
+ 4 │   login = true
+   ╰────
