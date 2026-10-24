@@ -4,11 +4,11 @@
   rustfmt,
   clippy,
 }: let
-  manifest = lib.importTOML ../crates/openmig/Cargo.toml;
+  manifest = lib.importTOML ../Cargo.toml;
 in
   rustPlatform.buildRustPackage {
     pname = "openmig";
-    version = manifest.package.version;
+    version = manifest.workspace.package.version;
 
     src = lib.fileset.toSource {
       root = ../.;
