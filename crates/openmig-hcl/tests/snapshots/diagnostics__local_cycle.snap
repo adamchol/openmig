@@ -1,0 +1,13 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/locals.hcl\",\n\"locals {\\n  a = local.b\\n  b = \\\"${local.a}x\\\"\\n}\\n\")])"
+---
+  × `local.a` depends on itself
+   ╭─[schema/locals.hcl:3:10]
+ 2 │   a = local.b
+ 3 │   b = "${local.a}x"
+   ·          ───┬───
+   ·             ╰── cyclic reference
+ 4 │ }
+   ╰────
+  help: cycle: local.a -> local.b -> local.a

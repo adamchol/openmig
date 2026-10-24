@@ -1,0 +1,12 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/a.hcl\", \"table \\\"app.users\\\" {}\\n\"),\n(\"schema/b.hcl\", \"\\ntable \\\"app.users\\\" {}\\n\"),])"
+---
+  × `table.app.users` is declared more than once
+  │   first declared here: schema/a.hcl:1:1
+   ╭─[schema/b.hcl:2:1]
+ 1 │ 
+ 2 │ table "app.users" {}
+   · ────────┬────────
+   ·         ╰── declared again here
+   ╰────

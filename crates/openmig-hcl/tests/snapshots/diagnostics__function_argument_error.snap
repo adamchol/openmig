@@ -1,0 +1,11 @@
+---
+source: crates/openmig-hcl/tests/diagnostics.rs
+expression: "render(&[(\"schema/main.hcl\",\n\"grant {\\n  privileges = split(\\\",\\\", [\\\"SELECT\\\"])\\n}\\n\")])"
+---
+  × `split`: argument 2 must be a string, found list
+   ╭─[schema/main.hcl:2:27]
+ 1 │ grant {
+ 2 │   privileges = split(",", ["SELECT"])
+   ·                           ──────────
+ 3 │ }
+   ╰────

@@ -60,7 +60,8 @@ Where a list of columns is expected, plain strings also work: `columns = ["tenan
 * **`sql("...")`** marks raw SQL where a plain string would be a literal value: `default`, values in
   `data` rows. Attributes that are always SQL take plain strings (`as`, `body`, `using`, `check`,
   `where`, `expr`, `when`, `generated`, `partition_by`, `order_by` entries given as strings, ...).
-* **Heredocs**: `<<-SQL ... SQL` strips the common leading indentation; `<<SQL` keeps it.
+* **Heredocs**: `<<-SQL ... SQL` strips the common leading indentation; `<<SQL` keeps it. As in
+  HCL, the value ends with the newline before the closing marker; `chomp(<<-SQL ... SQL)` drops it.
 * **Templates**: `"${var.x}"`; write `$${` for a literal `${`.
 * Comments: `#`, `//` and `/* */`.
 
@@ -85,13 +86,19 @@ locals {
 * Locals may reference variables, other locals and blocks; cycles are errors.
 * Functions (pure, no environment access):
   `format`, `join`, `split`, `lower`, `upper`, `replace`, `trimspace`, `trimprefix`, `trimsuffix`,
-  `concat`, `flatten`, `distinct`, `contains`, `keys`, `values`, `merge`, `coalesce`, `length`,
-  `range`, `tostring`, `tonumber`, `tobool`, `try`, `jsonencode`, `jsondecode`, `file`, `sql`.
-  `file("x.sql")` reads a file relative to the HCL file that calls it.
+  `chomp`, `concat`, `flatten`, `distinct`, `contains`, `keys`, `values`, `merge`, `coalesce`,
+  `length`, `range`, `tostring`, `tonumber`, `tobool`, `try`, `jsonencode`, `jsondecode`, `file`,
+  `sql`. `file("x.sql")` reads a file relative to the HCL file that calls it. Any other function
+  name is kept as a call (see Values), so these names cannot be used for SQL types or engines.
+* Objects keep the order in which they are written: `keys`, `values`, `for` expressions and
+  `for_each` iterate in that order.
 * Operators: arithmetic, comparison, `&&`, `||`, `!`, conditionals `c ? a : b`, `for`
   expressions `[for r in local.app_roles : r]`, splat is not supported.
 * `for_each = <list or map>` on any block creates one instance per element. `each.value` is the
-  element, `each.key` the map key or list index. There is no `count` and no `dynamic`.
+  element, `each.key` the map key or list index. There is no `count` and no `dynamic`. Nested
+  blocks of an instance can use `each` too; a nested `for_each` shadows the outer one. Instances
+  (and blocks nested in them) cannot be referenced, not even relatively (`column.id`): use plain
+  names such as `columns = ["id"]` inside them.
 
 ## Common attributes
 
