@@ -2,6 +2,7 @@
 //!
 //! * [`model`]: the schema model shared by decoding, inspection, diffing and planning.
 //! * [`PgSession`]: connections, inspection, execution, the history table and the migration lock.
+//! * [`diff`]: changes between two models; [`plan`]: ordered SQL for those changes.
 //! * [`PostgresEngine`]: the [`Engine`] implementation.
 
 mod conn;
@@ -11,10 +12,12 @@ pub mod encode;
 mod history;
 mod inspect;
 pub mod model;
+pub mod plan;
 pub mod restrict;
 mod session;
 mod settings;
 pub mod spec;
+mod sql;
 
 pub use diff::Change;
 pub use model::Database;
@@ -89,29 +92,29 @@ impl Engine for PostgresEngine {
         model.is_empty()
     }
 
-    fn resolve_hints(_current: &Database, _desired: &Database, _hints: &RenameHints) -> RenameSet {
-        unimplemented!("postgres rename hints")
+    fn resolve_hints(current: &Database, desired: &Database, hints: &RenameHints) -> RenameSet {
+        diff::resolve_hints(current, desired, hints)
     }
 
-    fn rename_candidates(_current: &Database, _desired: &Database) -> Vec<RenameCandidate> {
-        unimplemented!("postgres rename candidates")
+    fn rename_candidates(current: &Database, desired: &Database) -> Vec<RenameCandidate> {
+        diff::rename_candidates(current, desired)
     }
 
     fn diff(
-        _current: &Database,
-        _desired: &Database,
-        _ctx: &DiffContext<'_, Self>,
+        current: &Database,
+        desired: &Database,
+        ctx: &DiffContext<'_, Self>,
     ) -> Result<Vec<Change>, Error> {
-        unimplemented!("postgres diff")
+        diff::diff(current, desired, ctx)
     }
 
     fn plan(
-        _changes: Vec<Change>,
-        _current: &Database,
-        _desired: &Database,
-        _ctx: &DiffContext<'_, Self>,
+        changes: Vec<Change>,
+        current: &Database,
+        desired: &Database,
+        ctx: &DiffContext<'_, Self>,
     ) -> Result<Plan, Error> {
-        unimplemented!("postgres plan")
+        plan::plan(changes, current, desired, ctx)
     }
 
     fn lock_timeout_sql(timeout: Duration) -> Option<String> {

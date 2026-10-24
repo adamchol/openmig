@@ -5,6 +5,7 @@
 mod common;
 mod dialo;
 mod inspect;
+mod plan;
 mod roundtrip;
 mod session;
 mod tls;
