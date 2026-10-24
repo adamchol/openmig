@@ -2867,6 +2867,7 @@ Database {
                     "sort": None,
                 },
             },
+            mode: None,
         },
     },
     dependencies: [
@@ -4466,4 +4467,6 @@ Database {
             },
         },
     ],
+    server_major: 14,
+    external_roles: {},
 }

@@ -3034,6 +3034,7 @@ Database {
                     "sort": None,
                 },
             },
+            mode: None,
         },
     },
     dependencies: [
@@ -4704,4 +4705,6 @@ Database {
             },
         },
     ],
+    server_major: 17,
+    external_roles: {},
 }

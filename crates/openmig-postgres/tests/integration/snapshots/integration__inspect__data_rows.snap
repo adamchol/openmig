@@ -38,6 +38,7 @@ expression: model.data
                 ),
             },
         },
+        mode: None,
     },
     QualifiedName {
         schema: "public",
@@ -75,5 +76,6 @@ expression: model.data
                 ),
             },
         },
+        mode: None,
     },
 }
