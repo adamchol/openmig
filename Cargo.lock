@@ -1578,6 +1578,8 @@ dependencies = [
  "hex",
  "jiff",
  "openmig-core",
+ "openmig-hcl",
+ "openmig-scratch",
  "pretty_assertions",
  "sha2",
  "tempfile",

@@ -34,9 +34,14 @@ CREATE INDEX CONCURRENTLY "users_email_idx" ON "app"."users" ("email");
     generated files that are not in `<ref>`. Hand-written files never carry it.
   * `-- openmig:no-transaction`: statements run one by one outside a transaction.
   * `-- openmig:lock-timeout <duration>`, `-- openmig:statement-timeout <duration>` (`30s`, `5m`).
-  * Any other `-- openmig:` line is an error.
+    A duration is a whole number followed by `ms`, `s`, `m` or `h`.
+  * Any other `-- openmig:` line is an error, and so is a repeated directive. Other comments (such
+    as Atlas's `-- atlas:txmode none`) are ignored.
 * Statements are separated by `;` at the top level (outside strings, quoted identifiers, comments,
-  PostgreSQL dollar-quoted bodies and `BEGIN ATOMIC ... END` bodies).
+  PostgreSQL dollar-quoted bodies and `BEGIN ATOMIC ... END` bodies). Like psql, PostgreSQL files
+  also keep `;` inside parentheses (`CREATE RULE ... DO (...; ...)`).
+* The `--` lines directly above a statement (no blank line in between) are its comment; the
+  checksum of a statement covers its text only.
 * Generated files quote and fully qualify every identifier. Each statement is preceded by a
   one-line `-- <comment>`.
 * Generated files that create SQL-language functions begin with `SET check_function_bodies = off;`
@@ -121,18 +126,27 @@ COMMENT 'openmig-history v1';
 1. Connect (retrying until `--wait-for-db` expires), take the lock, ensure the history table, load
    history and the directory, verify `openmig.sum`.
 2. History empty:
-   * with `--baseline V`: record every file up to `V` as `baseline` (not executed);
+   * with `--baseline V`: record every file up to `V` as `baseline` (not executed). `V` must name a
+     file. The option is honoured while the history holds only baseline rows (an interrupted
+     baseline completes on rerun) and ignored once a migration has been applied;
    * otherwise, if the database has objects in scope and `--allow-dirty` is not given: refuse.
-3. Refuse if an applied file's checksum changed, or if a pending file is older than the newest
-   applied one (unless `allow_out_of_order`).
-4. For each pending file (up to `--to`):
+3. Refuse if an applied or baselined file's checksum changed or the file is missing, if a
+   `failed`/`running` file with applied statements is missing (one with none applied may be deleted),
+   or if a pending file is older than the newest applied one (unless `allow_out_of_order`). Every
+   pending file is split before anything runs, so syntax errors stop the deploy early.
+4. For each pending file (up to `--to`, which must name a file):
    * **Transactional:** `BEGIN; SET LOCAL lock_timeout = '<lock_timeout>'; <statements>;
      <history row: applied>; COMMIT`. On a lock timeout: roll back, wait with exponential backoff,
      retry (up to `retries`). On any other error: roll back, record a `failed` row (outside the
-     transaction) and stop.
+     transaction) and stop. The wait before retry `n` (from 0) is `1s * 2^n`, at most 30s.
    * **Non-transactional:** record a `running` row; after each statement update
      `statements_applied` and `statement_checksums`; on success mark `applied`; on error mark
      `failed` with `error_statement` and stop. A rerun resumes after the applied prefix if the
-     checksums of those statements are unchanged, and refuses otherwise.
+     checksums of those statements are unchanged, and refuses otherwise (also when the file lost
+     its `no-transaction` directive).
+   * A `statement-timeout` directive applies in both modes; the lock timeout only to transactional
+     files.
    * `RESET ALL` between files.
+   * `--dry-run` takes no lock and writes nothing: it reads history (if the table exists), runs the
+     same checks and reports what would run.
 5. Release the lock; print a summary (JSON with `--log-format json`).
