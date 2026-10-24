@@ -51,6 +51,11 @@ impl Table {
     pub fn column_mut(&mut self, name: &str) -> Option<&mut Column> {
         self.columns.iter_mut().find(|c| c.name == name)
     }
+
+    /// Indexes managed as indexes, i.e. without those that implement a constraint.
+    pub fn standalone_indexes(&self) -> impl Iterator<Item = &Index> {
+        self.indexes.values().filter(|i| !i.constraint)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
