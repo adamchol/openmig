@@ -1,0 +1,110 @@
+{"access_type":"CHECK","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SHOW","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SELECT","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"INSERT","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"UNDROP TABLE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"TRUNCATE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"OPTIMIZE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"BACKUP","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"KILL QUERY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"KILL TRANSACTION","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"MOVE PARTITION BETWEEN SHARDS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE USER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER USER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP USER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE ROLE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER ROLE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP ROLE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ROLE ADMIN","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE ROW POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER ROW POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP ROW POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE MASKING POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER MASKING POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP MASKING POLICY","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE QUOTA","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER QUOTA","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP QUOTA","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CREATE SETTINGS PROFILE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALTER SETTINGS PROFILE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"DROP SETTINGS PROFILE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ALLOW SQL SECURITY NONE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SHOW ACCESS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"IMPERSONATE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"NAMED COLLECTION ADMIN","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SET DEFINER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"TABLE ENGINE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SYSTEM","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"dictGet","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"displaySecretsInShowAndSelect","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"INTROSPECTION","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"READ","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"WRITE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CLUSTER","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"FILE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"URL","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"REMOTE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"MONGO","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"REDIS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"MYSQL","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"POSTGRES","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SQLITE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ODBC","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"JDBC","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"HDFS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"S3","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"HIVE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"AZURE","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"KAFKA","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"NATS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"RABBITMQ","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"YTSAURUS","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"ARROW FLIGHT","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"SOURCES","database":null,"table":null,"column":null,"grant_option":0}
+{"access_type":"CHECK","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SHOW","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SELECT","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"INSERT","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"ALTER","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"CREATE DATABASE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"CREATE TABLE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"CREATE VIEW","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"CREATE DICTIONARY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"DROP DATABASE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"DROP TABLE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"DROP VIEW","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"DROP DICTIONARY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"UNDROP TABLE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"TRUNCATE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"OPTIMIZE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"BACKUP","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"CREATE ROW POLICY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"ALTER ROW POLICY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"DROP ROW POLICY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SHOW ROW POLICIES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM MERGES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM TTL MERGES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM FETCHES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM MOVES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM PULLING REPLICATION LOG","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM CLEANUP","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM VIEWS","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM SENDS","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM REPLICATION QUEUES","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM VIRTUAL PARTS UPDATE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM REDUCE BLOCKING PARTS","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM DROP REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM SYNC REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM RESTART REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM RESTORE REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM RESTORE DATABASE REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM WAIT LOADING PARTS","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM SYNC DATABASE REPLICA","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM FLUSH DISTRIBUTED","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM FLUSH OBJECT STORAGE QUEUE","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM LOAD PRIMARY KEY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"SYSTEM UNLOAD PRIMARY KEY","database":"app","table":null,"column":null,"grant_option":1}
+{"access_type":"dictGet","database":"app","table":null,"column":null,"grant_option":1}

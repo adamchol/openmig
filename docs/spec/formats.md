@@ -115,11 +115,18 @@ CREATE TABLE IF NOT EXISTS `openmig`.`history` [ON CLUSTER c] (
 COMMENT 'openmig-history v1';
 ```
 
-* Reads use `FINAL` and `select_sequential_consistency = 1`; writes use `insert_quorum = 'auto'`
-  when replicated.
-* Lock: when Keeper is available, a `KeeperMap('/openmig/<database>/lock')` table; the lock is taken
-  by inserting a row with `keeper_map_strict_mode = 1` (fails if present) and released by deleting
-  it. Without Keeper a warning is printed and only one deploy may run at a time.
+* The engine is replicated when `cluster` is set. Reads use `FINAL`; on a replicated table they add
+  `select_sequential_consistency = 1` and writes use an insert quorum of a majority of the table's
+  replicas with `insert_quorum_parallel = 0` (an explicit number: `insert_quorum = 'auto'` never
+  confirms on a single replica). Each write inserts a new version of the row with a strictly
+  increasing `updated_at`; history repair deletes a row with a lightweight `DELETE`.
+* Lock: when Keeper is available, a table `<history database>.lock` with
+  `ENGINE = KeeperMap('/openmig/<history database>/lock')` (`key`, `holder`, `acquired_at`); the
+  lock is taken by inserting a row with `keeper_map_strict_mode = 1` (fails if present) and
+  released by deleting it. The row names the holder (`openmig/<version> host=... pid=...
+  user=...`) and when it was taken; a wait that times out reports both, with the `DELETE` that
+  removes a lock left behind by a killed deploy. Without Keeper a warning is printed and only one
+  deploy may run at a time.
 
 ## Deploy algorithm
 
