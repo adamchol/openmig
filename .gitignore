@@ -4,3 +4,6 @@ result*
 .envrc
 .dnvr/
 .claude/
+
+# Migrations generated while trying out the dev shell
+/examples/dev/*/migrations/

@@ -14,7 +14,7 @@ mod tests;
 
 use crate::model::{
     Column, Database, DefaultKind, Dictionary, Function, Grant, GrantLevel, Grantee,
-    MaterializedView, Model, Role, RowPolicy, RowPolicyId, Table, TimeSeriesTargets, View,
+    MaterializedView, Model, Role, RowPolicy, RowPolicyId, Table, View,
 };
 use crate::settings::ChSettings;
 use openmig_core::{EncodeOptions, EncodedFile, SplitBy};
@@ -24,17 +24,30 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use values::{ident_or_string, literal_expr, sql_text_expr};
 
-/// Target clauses the server gives a `TimeSeries` table that declares none (26.x).
-const DEFAULT_TIME_SERIES: [(&str, &str); 3] = [
-    ("data", "ENGINE = MergeTree ORDER BY (id, timestamp)"),
-    (
-        "tags",
-        "ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id)",
-    ),
-    (
-        "metrics",
-        "ENGINE = ReplacingMergeTree ORDER BY metric_family_name",
-    ),
+/// Target clauses the server gives a `TimeSeries` table that declares none, per server version:
+/// encoding leaves them out so `inspect` prints a bare `engine = TimeSeries`.
+const DEFAULT_TIME_SERIES: &[&str] = &[
+    // 24.x–26.5
+    "DATA ENGINE = MergeTree ORDER BY (id, timestamp) \
+     TAGS ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id) \
+     METRICS ENGINE = ReplacingMergeTree ORDER BY metric_family_name",
+    // 26.8
+    "SAMPLES INNER COLUMNS (`id` Tuple(UInt64, UUID), `timestamp` DateTime64(3) CODEC(DoubleDelta, ZSTD(1)), \
+     `value` Float64 CODEC(ZSTD(3))) SAMPLES INNER ENGINE = MergeTree ORDER BY (id, timestamp) \
+     SETTINGS index_granularity = 32768 TAGS INNER COLUMNS (`id` Tuple(UInt64, UUID) \
+     DEFAULT tuple(sipHash64(metric_name), reinterpretAsUUID(sipHash128(tags))), \
+     `metric_name` LowCardinality(String), `tags` Map(LowCardinality(String), String), \
+     `min_time` SimpleAggregateFunction(min, Nullable(DateTime64(3))), \
+     `max_time` SimpleAggregateFunction(max, Nullable(DateTime64(3)))) \
+     TAGS INNER ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id) \
+     SETTINGS index_granularity = 8192, allow_dimensions_outside_sorting_key = 1 \
+     METRICS INNER COLUMNS (`metric_family_name` String, `type` LowCardinality(String), \
+     `unit` LowCardinality(String), `help` String) \
+     METRICS INNER ENGINE = ReplacingMergeTree ORDER BY metric_family_name \
+     RECENT SAMPLES INNER COLUMNS (`id` Tuple(UInt64, UUID), `timestamp` DateTime64(3) CODEC(DoubleDelta, ZSTD(1)), \
+     `value` Float64 CODEC(ZSTD(3))) RECENT SAMPLES INNER ENGINE = MergeTree \
+     PARTITION BY toStartOfInterval(toDateTime(timestamp), toIntervalHour(5)) ORDER BY (id, timestamp) \
+     TTL toDateTime(timestamp) + toIntervalSecond(345600) SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1",
 ];
 
 /// Encode `model` as HCL files.
@@ -434,21 +447,9 @@ impl Encoder<'_> {
         block
     }
 
-    fn time_series(&self, targets: &TimeSeriesTargets, block: &mut WBlock) {
-        for (attr, value) in [
-            ("data", &targets.data),
-            ("tags", &targets.tags),
-            ("metrics", &targets.metrics),
-        ] {
-            let default = DEFAULT_TIME_SERIES
-                .iter()
-                .find(|(a, _)| *a == attr)
-                .map(|(_, d)| *d);
-            if let Some(value) = value
-                && Some(value.as_str()) != default
-            {
-                block.push_attr(attr, string(value));
-            }
+    fn time_series(&self, targets: &str, block: &mut WBlock) {
+        if !DEFAULT_TIME_SERIES.contains(&targets) {
+            block.push_attr("targets", string(targets));
         }
     }
 

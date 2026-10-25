@@ -45,7 +45,7 @@ fn replicated_table_with_codecs_indexes_ttl_and_settings() {
                 ("storage_policy", "'encrypted'"),
                 ("ttl_only_drop_parts", "1"),
             ]),
-            targets: BTreeMap::new(),
+            targets: Vec::new(),
         }
     );
     let columns = &table.elements.columns;
@@ -289,15 +289,15 @@ fn time_series() {
     assert_eq!(bare.storage.order_by, None);
     assert_eq!(
         bare.storage.targets,
-        map(&[
+        pairs(&[
             ("DATA", "ENGINE = MergeTree ORDER BY (id, timestamp)"),
-            (
-                "METRICS",
-                "ENGINE = ReplacingMergeTree ORDER BY metric_family_name"
-            ),
             (
                 "TAGS",
                 "ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id)"
+            ),
+            (
+                "METRICS",
+                "ENGINE = ReplacingMergeTree ORDER BY metric_family_name"
             ),
         ])
     );
@@ -313,9 +313,59 @@ fn time_series() {
         map(&[("store_min_time_and_max_time", "0")])
     );
     assert_eq!(
-        with_settings.storage.targets["DATA"],
-        "ENGINE = ReplicatedMergeTree ORDER BY (id, timestamp)"
+        with_settings.storage.targets[0],
+        (
+            "DATA".to_owned(),
+            "ENGINE = ReplicatedMergeTree ORDER BY (id, timestamp)".to_owned()
+        )
     );
+
+    // 26.8: inner columns and engines per target, and a RECENT SAMPLES target.
+    let inner = parse_table(
+        "CREATE TABLE default.m (`metric_name` String, `tags` Map(String, String)) ENGINE = TimeSeries \
+         SETTINGS recent_samples_ttl_seconds = 345600 \
+         SAMPLES INNER COLUMNS (`id` Tuple(UInt64, UUID), `value` Float64 CODEC(ZSTD(3))) \
+         SAMPLES INNER ENGINE = MergeTree ORDER BY (id, timestamp) SETTINGS index_granularity = 32768 \
+         TAGS INNER COLUMNS (`id` Tuple(UInt64, UUID), `tags` Map(LowCardinality(String), String)) \
+         TAGS INNER ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id) \
+         METRICS INNER ENGINE = ReplacingMergeTree ORDER BY metric_family_name \
+         RECENT SAMPLES INNER ENGINE = MergeTree ORDER BY (id, timestamp) TTL toDateTime(timestamp) + toIntervalSecond(345600)",
+    )
+    .unwrap();
+    assert_eq!(inner.storage.engine, "TimeSeries");
+    assert_eq!(inner.storage.order_by, None);
+    assert_eq!(inner.storage.ttl, None);
+    assert_eq!(
+        inner.storage.settings,
+        map(&[("recent_samples_ttl_seconds", "345600")])
+    );
+    assert_eq!(
+        inner
+            .storage
+            .targets
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "SAMPLES INNER COLUMNS",
+            "SAMPLES INNER ENGINE",
+            "TAGS INNER COLUMNS",
+            "TAGS INNER ENGINE",
+            "METRICS INNER ENGINE",
+            "RECENT SAMPLES INNER ENGINE",
+        ]
+    );
+    assert_eq!(
+        inner.storage.targets[1].1,
+        "= MergeTree ORDER BY (id, timestamp) SETTINGS index_granularity = 32768"
+    );
+}
+
+fn pairs(items: &[(&str, &str)]) -> Vec<(String, String)> {
+    items
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .collect()
 }
 
 #[test]

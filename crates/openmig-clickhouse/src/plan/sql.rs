@@ -159,14 +159,8 @@ pub fn create_table(database: &str, t: &Table, on_cluster: &str) -> String {
         if !t.settings.is_empty() {
             s.push_str(&format!("\nSETTINGS {}", settings_list(&t.settings)));
         }
-        for (keyword, target) in [
-            ("DATA", &targets.data),
-            ("TAGS", &targets.tags),
-            ("METRICS", &targets.metrics),
-        ] {
-            if let Some(target) = target {
-                s.push_str(&format!("\n{keyword} {target}"));
-            }
+        if !targets.is_empty() {
+            s.push_str(&format!("\n{targets}"));
         }
         if let Some(comment) = &t.comment {
             s.push_str(&format!("\nCOMMENT {}", lit(comment)));

@@ -3,6 +3,5 @@ CREATE DATABASE IF NOT EXISTS `otel` ENGINE = Atomic;
 -- Create table "otel"."metrics"
 CREATE TABLE IF NOT EXISTS `otel`.`metrics`
 ENGINE = TimeSeries
-DATA ENGINE = MergeTree ORDER BY (id, timestamp)
-TAGS ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id)
-METRICS ENGINE = ReplacingMergeTree ORDER BY metric_family_name;
+SETTINGS `recent_samples_ttl_seconds` = 345600
+SAMPLES INNER COLUMNS (`id` Tuple(UInt64, UUID), `timestamp` DateTime64(3) CODEC(DoubleDelta, ZSTD(1)), `value` Float64 CODEC(ZSTD(3))) SAMPLES INNER ENGINE = MergeTree ORDER BY (id, timestamp) SETTINGS index_granularity = 32768 TAGS INNER COLUMNS (`id` Tuple(UInt64, UUID) DEFAULT tuple(sipHash64(metric_name), reinterpretAsUUID(sipHash128(tags))), `metric_name` LowCardinality(String), `tags` Map(LowCardinality(String), String), `min_time` SimpleAggregateFunction(min, Nullable(DateTime64(3))), `max_time` SimpleAggregateFunction(max, Nullable(DateTime64(3)))) TAGS INNER ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id) SETTINGS index_granularity = 8192, allow_dimensions_outside_sorting_key = 1 METRICS INNER COLUMNS (`metric_family_name` String, `type` LowCardinality(String), `unit` LowCardinality(String), `help` String) METRICS INNER ENGINE = ReplacingMergeTree ORDER BY metric_family_name RECENT SAMPLES INNER COLUMNS (`id` Tuple(UInt64, UUID), `timestamp` DateTime64(3) CODEC(DoubleDelta, ZSTD(1)), `value` Float64 CODEC(ZSTD(3))) RECENT SAMPLES INNER ENGINE = MergeTree PARTITION BY toStartOfInterval(toDateTime(timestamp), toIntervalHour(5)) ORDER BY (id, timestamp) TTL toDateTime(timestamp) + toIntervalSecond(345600) SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;

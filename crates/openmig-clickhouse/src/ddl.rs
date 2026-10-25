@@ -52,8 +52,10 @@ pub struct StorageClauses {
     pub sample_by: Option<String>,
     pub ttl: Option<String>,
     pub settings: BTreeMap<String, String>,
-    /// `TimeSeries` target clauses, keyed by `DATA`, `TAGS` and `METRICS`.
-    pub targets: BTreeMap<String, String>,
+    /// `TimeSeries` target clauses in server order: `(keyword, body)`, e.g.
+    /// `("DATA", "ENGINE = MergeTree ...")` (24.x–26.5) or
+    /// `("SAMPLES INNER ENGINE", "= MergeTree ...")` (26.8+).
+    pub targets: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -205,7 +207,22 @@ const TABLE_CLAUSES: &[&[&str]] = &[
     &["COMMENT"],
 ];
 
-const TIME_SERIES_TARGETS: &[&str] = &["DATA", "TAGS", "METRICS"];
+/// Keywords that start a `TimeSeries` target clause, longest first.
+const TIME_SERIES_TARGETS: &[&[&str]] = &[
+    &["RECENT", "SAMPLES", "INNER", "COLUMNS"],
+    &["RECENT", "SAMPLES", "INNER", "ENGINE"],
+    &["SAMPLES", "INNER", "COLUMNS"],
+    &["SAMPLES", "INNER", "ENGINE"],
+    &["TAGS", "INNER", "COLUMNS"],
+    &["TAGS", "INNER", "ENGINE"],
+    &["METRICS", "INNER", "COLUMNS"],
+    &["METRICS", "INNER", "ENGINE"],
+    &["RECENT", "SAMPLES"],
+    &["SAMPLES"],
+    &["DATA"],
+    &["TAGS"],
+    &["METRICS"],
+];
 
 /// Keywords that can follow a column's type.
 const COLUMN_CLAUSES: &[&str] = &[
@@ -855,18 +872,24 @@ impl<'a> Parser<'a> {
             .find(|&i| self.toks[i].depth == depth && stop.iter().any(|w| self.is_word(i, w)))
             .unwrap_or(self.len());
 
-        let mut starts: Vec<(usize, usize, &str)> = Vec::new();
+        let mut starts: Vec<(usize, usize, String)> = Vec::new();
+        let mut in_target = false;
         let mut i = engine_end;
         while i < end {
             if self.toks[i].depth == depth {
-                if time_series && TIME_SERIES_TARGETS.iter().any(|w| self.is_word(i, w)) {
-                    starts.push((i, i + 1, self.toks[i].text));
-                    i += 1;
+                if time_series
+                    && let Some(words) = TIME_SERIES_TARGETS.iter().find(|words| {
+                        words
+                            .iter()
+                            .enumerate()
+                            .all(|(n, w)| self.is_word(i + n, w))
+                    })
+                {
+                    starts.push((i, i + words.len(), words.join(" ")));
+                    in_target = true;
+                    i += words.len();
                     continue;
                 }
-                let in_target = starts
-                    .last()
-                    .is_some_and(|(_, _, k)| TIME_SERIES_TARGETS.contains(k));
                 if !in_target
                     && let Some(clause) = TABLE_CLAUSES.iter().find(|clause| {
                         clause
@@ -875,15 +898,15 @@ impl<'a> Parser<'a> {
                             .all(|(n, word)| self.is_word(i + n, word))
                     })
                 {
-                    starts.push((i, i + clause.len(), clause[0]));
+                    starts.push((i, i + clause.len(), clause[0].to_owned()));
                     i += clause.len();
                     continue;
                 }
             }
             i += 1;
         }
-        if let Some(&(first, _, _)) = starts.first()
-            && first != engine_end
+        if let Some((first, _, _)) = starts.first()
+            && *first != engine_end
         {
             return Err(self.error(format!(
                 "unexpected {} after the engine",
@@ -898,8 +921,10 @@ impl<'a> Parser<'a> {
         }
 
         let mut comment = None;
-        for (n, &(_, body_start, keyword)) in starts.iter().enumerate() {
-            let body_end = starts.get(n + 1).map_or(end, |&(next, _, _)| next);
+        for (n, (_, body_start, keyword)) in starts.iter().enumerate() {
+            let body_start = *body_start;
+            let keyword = keyword.as_str();
+            let body_end = starts.get(n + 1).map_or(end, |(next, _, _)| *next);
             let body = body_start..body_end;
             if body.start >= body.end {
                 return Err(self.error(format!("empty {keyword} clause")));
@@ -913,9 +938,7 @@ impl<'a> Parser<'a> {
                 "TTL" => storage.ttl = Some(self.ttl(body)),
                 "SETTINGS" => storage.settings = self.settings(body)?,
                 "COMMENT" => comment = Some(self.string(body.start)?),
-                target => {
-                    storage.targets.insert(target.to_owned(), text);
-                }
+                target => storage.targets.push((target.to_owned(), text)),
             }
         }
         Ok((storage, comment, end))

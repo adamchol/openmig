@@ -2,7 +2,7 @@
   description = "OpenMig: declarative and versioned schema migrations for PostgreSQL and ClickHouse";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
     dnvr.url = "github:dialohq/dnvr";
@@ -21,7 +21,7 @@
       imports = [ inputs.dnvr.flakeModule ];
 
       perSystem =
-        { config, pkgs, ... }:
+        { pkgs, presets, ... }:
         let
           inherit (pkgs) lib;
           openmig = pkgs.callPackage ./nix/package.nix { };
@@ -60,20 +60,7 @@
             '';
           };
 
-          dnvr.shells.default = {
-            packages = with pkgs; [
-              cargo
-              rustc
-              rustfmt
-              clippy
-              rust-analyzer
-              cargo-insta
-              postgresql_17
-              clickhouse
-              nixfmt
-            ];
-            env.RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
-          };
+          dnvr.shells.default = import ./nix/dev.nix { inherit pkgs presets; };
         };
 
       flake.lib = {

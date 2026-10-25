@@ -5,7 +5,7 @@ use crate::ddl::{self, CreateKind, ParsedColumn, StorageClauses};
 use crate::model::{
     Column, ColumnDefault, Constraint, ConstraintKind, Database, DefaultKind, Dictionary,
     DictionaryAttribute, Function, Index, InnerTable, MaterializedView, Model, Projection,
-    QualifiedName, Table, TimeSeriesTargets, View,
+    QualifiedName, Table, View,
 };
 use openmig_core::Error;
 use std::collections::BTreeMap;
@@ -127,12 +127,7 @@ fn table(row: &TableRow, parsed: ddl::ParsedTable, columns: &[&ColumnRow]) -> dd
         ..Table::default()
     };
     if time_series {
-        let target = |key: &str| storage.targets.get(key).cloned();
-        table.time_series = Some(TimeSeriesTargets {
-            data: target("DATA"),
-            tags: target("TAGS"),
-            metrics: target("METRICS"),
-        });
+        table.time_series = Some(time_series_clauses(&storage.targets));
     }
     let inner = inner_table(storage);
     table.engine = inner.engine;
@@ -252,4 +247,13 @@ fn dictionary(row: &TableRow, parsed: ddl::ParsedDictionary) -> ddl::Result<Dict
         settings: parsed.settings,
         comment: non_empty(&row.comment),
     })
+}
+
+/// The target clauses as one text, in server order.
+pub(crate) fn time_series_clauses(targets: &[(String, String)]) -> String {
+    targets
+        .iter()
+        .map(|(keyword, body)| format!("{keyword} {body}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }

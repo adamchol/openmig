@@ -6,7 +6,7 @@ use crate::ddl;
 use crate::model::{
     Column, ColumnDefault, Constraint, ConstraintKind, DefaultKind, Dictionary,
     DictionaryAttribute, Function, Index, InnerTable, MaterializedView, Projection, QualifiedName,
-    Table, TimeSeriesTargets, View, engine_name,
+    Table, View, engine_name,
 };
 use openmig_core::{ObjectKind, ObjectRef};
 use openmig_hcl::decode::suggest;
@@ -85,14 +85,7 @@ impl<'a> Decoder<'a> {
         table.ttl = self.sql_attr(&mut dec, "ttl", false, expression);
         table.settings = self.settings_attr(&mut dec, "settings");
         if time_series {
-            let targets = TimeSeriesTargets {
-                data: self.sql_attr(&mut dec, "data", false, expression),
-                tags: self.sql_attr(&mut dec, "tags", false, expression),
-                metrics: self.sql_attr(&mut dec, "metrics", false, expression),
-            };
-            if targets != TimeSeriesTargets::default() {
-                table.time_series = Some(targets);
-            }
+            table.time_series = self.sql_attr(&mut dec, "targets", false, expression);
         }
         for mut child in dec.children("index") {
             if let Some((index_name, index)) = self.index(&mut child, &database, &name) {

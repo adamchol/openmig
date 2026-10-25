@@ -44,20 +44,11 @@ fn comparable(mut model: Model) -> Model {
     }
     for db in model.databases.values_mut() {
         for table in db.tables.values_mut() {
-            let Some(targets) = &mut table.time_series else {
-                continue;
-            };
-            for (attr, default) in super::DEFAULT_TIME_SERIES {
-                let target = match attr {
-                    "data" => &mut targets.data,
-                    "tags" => &mut targets.tags,
-                    _ => &mut targets.metrics,
-                };
-                if target.as_deref() == Some(default) {
-                    *target = None;
-                }
-            }
-            if *targets == TimeSeriesTargets::default() {
+            if table
+                .time_series
+                .as_deref()
+                .is_some_and(|t| super::DEFAULT_TIME_SERIES.contains(&t))
+            {
                 table.time_series = None;
             }
         }
@@ -205,14 +196,12 @@ fn rich_model() -> Model {
     db.tables.insert("mem".into(), memory);
 
     let mut metrics = Table::new("metrics", "TimeSeries");
-    metrics.time_series = Some(TimeSeriesTargets {
-        data: Some("ENGINE = MergeTree ORDER BY (id, timestamp)".into()),
-        tags: Some(
-            "ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id)"
-                .into(),
-        ),
-        metrics: Some("ENGINE = ReplicatedReplacingMergeTree ORDER BY metric_family_name".into()),
-    });
+    metrics.time_series = Some(
+        "DATA ENGINE = MergeTree ORDER BY (id, timestamp) \
+         TAGS ENGINE = AggregatingMergeTree PRIMARY KEY metric_name ORDER BY tuple(metric_name, id) \
+         METRICS ENGINE = ReplicatedReplacingMergeTree ORDER BY metric_family_name"
+            .into(),
+    );
     db.tables.insert("metrics".into(), metrics);
 
     db.views.insert(
@@ -406,9 +395,14 @@ fn short_forms() {
         );
     }
     assert!(!text.contains("database \"default\""), "{text}");
-    assert!(!text.contains("tags"), "{text}");
     assert!(
-        text.contains("metrics = \"ENGINE = ReplicatedReplacingMergeTree"),
+        text.contains("targets = \"DATA ENGINE = MergeTree ORDER BY (id, timestamp) TAGS ENGINE"),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "METRICS ENGINE = ReplicatedReplacingMergeTree ORDER BY metric_family_name\""
+        ),
         "{text}"
     );
 }

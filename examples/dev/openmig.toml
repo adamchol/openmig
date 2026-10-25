@@ -1,0 +1,15 @@
+# Example project used by the dev shell's processes (`dnvr up`). The URLs come from the
+# environment the dev shell sets; see nix/dev.nix.
+
+[databases.shop]
+engine = "postgres"
+schema = ["pg/schema"]
+migrations = "pg/migrations"
+url = "${OPENMIG_DEV_PG_URL}"
+version = 17
+
+[databases.analytics]
+engine = "clickhouse"
+schema = ["ch/schema"]
+migrations = "ch/migrations"
+url = "${OPENMIG_DEV_CH_URL}"

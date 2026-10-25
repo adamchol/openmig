@@ -32,8 +32,10 @@ pub struct Table {
     pub indexes: BTreeMap<String, Index>,
     pub projections: BTreeMap<String, Projection>,
     pub constraints: BTreeMap<String, Constraint>,
-    /// Target tables of a `TimeSeries` table.
-    pub time_series: Option<TimeSeriesTargets>,
+    /// Target clauses of a `TimeSeries` table as the server prints them after the engine
+    /// (`DATA ENGINE = ...` before 26.8, `SAMPLES INNER ENGINE = ...` since), in server order.
+    /// The inner tables themselves are never part of the model.
+    pub time_series: Option<String>,
     pub comment: Option<String>,
 }
 
@@ -178,16 +180,6 @@ impl ConstraintKind {
             ConstraintKind::Assume => "ASSUME",
         }
     }
-}
-
-/// The target clauses of a `TimeSeries` table, as printed after `DATA`, `TAGS` and `METRICS`:
-/// `ENGINE = MergeTree ORDER BY (id, timestamp)` for an inner table, or a table name for an
-/// external target. The inner tables themselves are never part of the model.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TimeSeriesTargets {
-    pub data: Option<String>,
-    pub tags: Option<String>,
-    pub metrics: Option<String>,
 }
 
 /// A view: `CREATE VIEW name [SQL SECURITY ...] AS query`.

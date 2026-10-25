@@ -21,8 +21,7 @@ pub use access::{
 pub use objects::Object;
 pub use table::{
     Column, ColumnDefault, Constraint, ConstraintKind, DefaultKind, Dictionary,
-    DictionaryAttribute, Index, InnerTable, MaterializedView, Projection, Table, TimeSeriesTargets,
-    View,
+    DictionaryAttribute, Index, InnerTable, MaterializedView, Projection, Table, View,
 };
 
 use openmig_core::ObjectRef;

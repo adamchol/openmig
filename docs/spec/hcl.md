@@ -484,7 +484,7 @@ A database that tables or views name without declaring it is created with `Atomi
 | `index "name" {}` | block | Data-skipping index: `expr` (string, required), `type` (identifier or call, required: `minmax`, `set(1024)`, `bloom_filter(0.01)`, `tokenbf_v1(32768, 3, 0)`, `ngrambf_v1(...)`), `granularity` (number, default 1). |
 | `projection "name" {}` | block | `query` (string, required), `settings` (object, `WITH SETTINGS`). |
 | `constraint "name" {}` | block | `check = "..."` or `assume = "..."`. |
-| `data`, `tags`, `metrics` | string | `TimeSeries` only: the target clause after `DATA` / `TAGS` / `METRICS` (`"ENGINE = ReplicatedMergeTree ORDER BY (id, timestamp)"`); the server's defaults when absent. |
+| `targets` | string | `TimeSeries` only: the target clauses after the engine, in the server's syntax (before 26.8 `"DATA ENGINE = ReplicatedMergeTree ORDER BY (id, timestamp) TAGS ..."`, since 26.8 `"SAMPLES INNER ENGINE = ... TAGS INNER ENGINE = ..."`); the server's defaults when absent. |
 | `comment`, `renamed_from`, `depends_on` | | |
 
 Tables with `engine = TimeSeries` declare no columns: they and the inner tables are implicit.
