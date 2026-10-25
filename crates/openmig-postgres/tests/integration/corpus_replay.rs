@@ -1,14 +1,14 @@
 //! Replay of a real migration history, checking a plan for every migration.
 //!
-//! `cargo test -p openmig-postgres --test integration -- --ignored --nocapture dialo_replay`
+//! `cargo test -p openmig-postgres --test integration -- --ignored --nocapture corpus_replay`
 //!
-//! Migrations come from `OPENMIG_DIALO_MIGRATIONS` (default: dialo's PostgreSQL migrations next
-//! to the workspace). Two private servers are started so that roles are not shared: database B
-//! replays the files one at a time; after each file the plan from database A (maintained only by
-//! plans) to B is generated, applied to A, and A must then plan empty against B and equal it.
-//! When a step fails, A is rebuilt by replaying the files so far and the replay goes on; the
-//! failures are reported at the end. `OPENMIG_DIALO_FROM=<n>` starts checking at file `n`
-//! (earlier files are replayed into both databases).
+//! Migrations come from `OPENMIG_CORPUS_PG` (a directory of versioned `.sql` files). Two private
+//! servers are started so that roles are not shared: database B replays the files one at a time;
+//! after each file the plan from database A (maintained only by plans) to B is generated, applied
+//! to A, and A must then plan empty against B and equal it. When a step fails, A is rebuilt by
+//! replaying the files so far and the replay goes on; the failures are reported at the end.
+//! `OPENMIG_CORPUS_FROM=<n>` starts checking at file `n` (earlier files are replayed into both
+//! databases).
 
 use crate::plan::{apply, comparable, diff_and_plan};
 use openmig_core::sql::{Dialect, split};
@@ -18,11 +18,8 @@ use openmig_scratch::PostgresServer;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-fn migrations_dir() -> PathBuf {
-    std::env::var_os("OPENMIG_DIALO_MIGRATIONS").map_or_else(
-        || PathBuf::from("/home/coder/dialo/dialo-db/pg/migrations"),
-        PathBuf::from,
-    )
+fn migrations_dir() -> Option<PathBuf> {
+    std::env::var_os("OPENMIG_CORPUS_PG").map(PathBuf::from)
 }
 
 fn url(server: &PostgresServer, database: &str) -> String {
@@ -39,7 +36,7 @@ async fn session(url: &str) -> PgSession {
 async fn run_file(url: &str, path: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let statements = split(&text, Dialect::Postgres).map_err(|e| e.to_string())?;
-    let transactional = !text.contains("atlas:txmode none")
+    let transactional = !text.contains("openmig:no-transaction")
         && !statements.iter().any(|s| s.sql.contains("CONCURRENTLY"));
     let mut s = session(url).await;
     if transactional {
@@ -90,9 +87,12 @@ async fn recreate(server: &PostgresServer, database: &str) {
 }
 
 #[tokio::test]
-#[ignore = "replays dialo's migration history; slow"]
-async fn dialo_replay() {
-    let dir = migrations_dir();
+#[ignore = "needs OPENMIG_CORPUS_PG; slow"]
+async fn corpus_replay() {
+    let Some(dir) = migrations_dir() else {
+        eprintln!("skipping: set OPENMIG_CORPUS_PG to a migration directory");
+        return;
+    };
     if !dir.is_dir() {
         eprintln!("skipping: {} is not a directory", dir.display());
         return;
@@ -103,16 +103,16 @@ async fn dialo_replay() {
         .filter(|p| p.extension().is_some_and(|e| e == "sql"))
         .collect();
     files.sort();
-    let from: usize = std::env::var("OPENMIG_DIALO_FROM")
+    let from: usize = std::env::var("OPENMIG_CORPUS_FROM")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     let spec = openmig_testkit::postgres_spec();
     let server_a = PostgresServer::start(&spec).await.unwrap();
     let server_b = PostgresServer::start(&spec).await.unwrap();
-    let (url_a, url_b) = (url(&server_a, "dialo"), url(&server_b, "dialo"));
-    recreate(&server_a, "dialo").await;
-    recreate(&server_b, "dialo").await;
+    let (url_a, url_b) = (url(&server_a, "corpus"), url(&server_b, "corpus"));
+    recreate(&server_a, "corpus").await;
+    recreate(&server_b, "corpus").await;
     let scope = Scope {
         manage_roles: true,
         ..Scope::default()
@@ -147,7 +147,7 @@ async fn dialo_replay() {
             .map_err(|e| format!("planning failed: {e}"))?;
             let planned_in = planning.elapsed();
             let db = crate::common::TestDb {
-                name: "dialo".into(),
+                name: "corpus".into(),
                 url: url_a.clone(),
             };
             apply(&db, &plan)
@@ -182,7 +182,7 @@ async fn dialo_replay() {
             Err(e) => {
                 eprintln!("{i:3} {name}: FAILED\n{e}");
                 failures.push(format!("{name}: {}", e.lines().next().unwrap_or_default()));
-                recreate(&server_a, "dialo").await;
+                recreate(&server_a, "corpus").await;
                 for f in &files[..=i] {
                     run_file(&url_a, f).await.unwrap();
                 }
@@ -201,7 +201,7 @@ async fn dialo_replay() {
     let started = Instant::now();
     let b = session(&url_b).await.inspect(&scope).await.unwrap();
     let decoded = crate::plan::decoded_from(&b).model;
-    recreate(&server_a, "dialo").await;
+    recreate(&server_a, "corpus").await;
     let mut scratch = PgSession::connect(server_a.url(), &settings, SessionPurpose::Scratch)
         .await
         .unwrap();

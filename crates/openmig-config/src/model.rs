@@ -334,7 +334,7 @@ mod tests {
             [databases.analytics]
             engine = "clickhouse"
             schema = "ch"
-            schemas = ["dialo", "otel"]
+            schemas = ["shop", "otel"]
             cluster = "{cluster}"
         "#)
         .unwrap();
@@ -358,7 +358,7 @@ mod tests {
         );
         let ch = c.database(Some("analytics")).unwrap();
         assert_eq!(ch.schema, vec![PathBuf::from("/p/ch")]);
-        assert_eq!(ch.schemas, Some(vec!["dialo".into(), "otel".into()]));
+        assert_eq!(ch.schemas, Some(vec!["shop".into(), "otel".into()]));
         assert!(c.database(None).is_err());
     }
 

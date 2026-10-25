@@ -3,8 +3,9 @@
 #
 #   scripts/acceptance-postgres.sh <migration dir> [openmig binary]
 #
-# The directory holds versioned `<14 digits>[_name].sql` files (e.g. a project's Atlas history;
-# `-- atlas:txmode none` is treated as `-- openmig:no-transaction`). The script starts a private
+# The directory holds versioned `<14 digits>[_name].sql` files, e.g. a project's existing migration
+# history. Set NO_TRANSACTION_MARKER to a comment line that marks files to run outside a
+# transaction (it is rewritten to `-- openmig:no-transaction`). The script starts a private
 # PostgreSQL cluster from the binaries on PATH, then:
 #   1. deploys the history into database `replayed`,
 #   2. inspects it into HCL,
@@ -46,7 +47,9 @@ expect_no_diff() {
 
 mkdir -p "$work/history" "$work/project"
 cp "$src"/*.sql "$work/history/"
-sed -i 's/^-- atlas:txmode none$/-- openmig:no-transaction/' "$work/history"/*.sql
+if [ -n "${NO_TRANSACTION_MARKER:-}" ]; then
+  sed -i "s|^${NO_TRANSACTION_MARKER}\$|-- openmig:no-transaction|" "$work/history"/*.sql
+fi
 "$openmig" --engine postgres --migrations "$work/history" rehash
 
 step "deploy the history"

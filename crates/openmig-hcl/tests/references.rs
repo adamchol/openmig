@@ -219,11 +219,11 @@ grant {
 }
 "#,
         )],
-        &[("db", openmig_hcl::VarValue::Raw("dialo".into()))],
+        &[("db", openmig_hcl::VarValue::Raw("shop".into()))],
     )
     .unwrap();
-    assert_eq!(attr(&doc, "schema", "name"), s("dialo"));
-    assert_eq!(attr(&doc, "grant", "v"), s("x_dialo"));
+    assert_eq!(attr(&doc, "schema", "name"), s("shop"));
+    assert_eq!(attr(&doc, "grant", "v"), s("x_shop"));
 }
 
 #[test]

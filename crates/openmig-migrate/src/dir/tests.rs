@@ -67,7 +67,7 @@ fn load_sorts_and_ignores_other_files() {
     );
     write(tmp.path(), "20260101000000.sql", "SELECT 1;\n");
     write(tmp.path(), "README.md", "not a migration");
-    write(tmp.path(), "atlas.sum", "h1:...");
+    write(tmp.path(), "checksums.txt", "h1:...");
     std::fs::create_dir(tmp.path().join("nested")).unwrap();
     write(&tmp.path().join("nested"), "bogus.sql", "SELECT 3;");
 
@@ -241,7 +241,7 @@ fn sum_malformed_lines() {
             1,
             "expected `openmig-sum 1 total:<sha256 hex>`",
         ),
-        ("atlas-sum 1 total:abc\n".to_owned(), 1, "expected"),
+        ("other-sum 1 total:abc\n".to_owned(), 1, "expected"),
         (
             format!("openmig-sum 2 total:{hash}\n"),
             1,
@@ -426,18 +426,16 @@ fn render_file_splits_back_into_the_plan() {
     }
 }
 
-/// Loads the real migration directories of the dialo repository when it is checked out next to
-/// this one: every name is valid and Atlas directives are plain comments.
+/// Loads real-world migration directories named by `OPENMIG_CORPUS_PG` and `OPENMIG_CORPUS_CH`:
+/// every name is valid and comments that look like other tools' directives are plain comments.
 #[test]
-#[ignore = "needs /home/coder/dialo/dialo-db"]
-fn dialo_directories_load() {
-    let root = Path::new("/home/coder/dialo/dialo-db");
+#[ignore = "needs OPENMIG_CORPUS_PG or OPENMIG_CORPUS_CH"]
+fn corpus_directories_load() {
     let mut loaded = 0;
-    for sub in ["pg", "ch"] {
-        let path = root.join(sub).join("migrations");
-        if !path.is_dir() {
+    for var in ["OPENMIG_CORPUS_PG", "OPENMIG_CORPUS_CH"] {
+        let Some(path) = std::env::var_os(var).map(std::path::PathBuf::from) else {
             continue;
-        }
+        };
         let dir = MigrationDir::load(&path).unwrap();
         assert!(!dir.files.is_empty());
         assert!(
@@ -447,12 +445,12 @@ fn dialo_directories_load() {
         );
         assert_eq!(dir.verify_sum(), Err(SumError::Missing));
         println!(
-            "{sub}: {} files, {} .. {}",
+            "{var}: {} files, {} .. {}",
             dir.files.len(),
             dir.files[0].file_name,
             dir.latest_version().unwrap_or_default()
         );
         loaded += 1;
     }
-    assert!(loaded > 0, "no dialo migration directories found");
+    assert!(loaded > 0, "no migration directories found");
 }

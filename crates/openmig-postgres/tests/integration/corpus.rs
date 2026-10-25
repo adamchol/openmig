@@ -1,9 +1,9 @@
 //! Smoke test: inspect a database built by replaying a real migration directory.
 //!
-//! `OPENMIG_DIALO_MIGRATIONS=<dir> cargo test -p openmig-postgres -- --ignored --nocapture dialo`
+//! `OPENMIG_CORPUS_PG=<dir> cargo test -p openmig-postgres -- --ignored --nocapture corpus`
 //! replays `<dir>/*.sql` with `psql` into a fresh database, then inspects it with roles managed
 //! and prints timings. Roles the migrations create are dropped before and after. Set
-//! `OPENMIG_DIALO_DUMP=<file>` to write the inspected model there.
+//! `OPENMIG_CORPUS_DUMP=<file>` to write the inspected model there.
 
 use crate::common::{ROLES, TestDb, drop_role};
 use openmig_core::{Scope, Session};
@@ -21,10 +21,10 @@ fn created_roles(sql: &str) -> Vec<String> {
 }
 
 #[tokio::test]
-#[ignore = "needs OPENMIG_DIALO_MIGRATIONS and psql"]
-async fn dialo_smoke() {
-    let Some(dir) = std::env::var_os("OPENMIG_DIALO_MIGRATIONS").map(PathBuf::from) else {
-        eprintln!("skipping: set OPENMIG_DIALO_MIGRATIONS to a migration directory");
+#[ignore = "needs OPENMIG_CORPUS_PG and psql"]
+async fn corpus_smoke() {
+    let Some(dir) = std::env::var_os("OPENMIG_CORPUS_PG").map(PathBuf::from) else {
+        eprintln!("skipping: set OPENMIG_CORPUS_PG to a migration directory");
         return;
     };
     if !dir.is_dir() {
@@ -32,7 +32,7 @@ async fn dialo_smoke() {
         return;
     }
     let _roles = ROLES.read().await;
-    let Some(db) = TestDb::create("omt_dialo").await else {
+    let Some(db) = TestDb::create("omt_corpus").await else {
         return;
     };
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -80,7 +80,7 @@ async fn dialo_smoke() {
     }
     eprintln!("inspection times: {timings:?}");
     let model = &models[0];
-    if let Some(path) = std::env::var_os("OPENMIG_DIALO_DUMP") {
+    if let Some(path) = std::env::var_os("OPENMIG_CORPUS_DUMP") {
         std::fs::write(path, format!("{model:#?}")).unwrap();
     }
     assert_eq!(model, &models[1]);

@@ -146,8 +146,8 @@ CREATE TABLE t (a int);
     }
 
     #[test]
-    fn atlas_directives_are_plain_comments() {
-        let content = "-- atlas:txmode none\n\nCREATE INDEX CONCURRENTLY i ON t (a);\n";
+    fn other_tools_directives_are_plain_comments() {
+        let content = "-- othertool:txmode none\n\nCREATE INDEX CONCURRENTLY i ON t (a);\n";
         assert_eq!(parse_directives(content).unwrap(), Directives::default());
     }
 

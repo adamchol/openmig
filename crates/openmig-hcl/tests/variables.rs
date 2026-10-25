@@ -46,9 +46,9 @@ fn with_vars(vars: &[(&str, VarValue)]) -> openmig_hcl::Document {
 
 #[test]
 fn defaults_and_given_values() {
-    let doc = with_vars(&[("db", VarValue::Raw("dialo".into()))]);
+    let doc = with_vars(&[("db", VarValue::Raw("shop".into()))]);
     assert_eq!(attr(&doc, "grant", "replicated"), Value::Bool(true));
-    assert_eq!(attr(&doc, "grant", "db"), s("dialo"));
+    assert_eq!(attr(&doc, "grant", "db"), s("shop"));
     assert_eq!(attr(&doc, "grant", "shards"), n(1));
     assert_eq!(attr(&doc, "grant", "roles"), list(vec![s("web")]));
     assert_eq!(attr(&doc, "grant", "settings"), obj(&[]));
@@ -58,7 +58,7 @@ fn defaults_and_given_values() {
 #[test]
 fn raw_values_are_converted_to_the_declared_type() {
     let doc = with_vars(&[
-        ("db", VarValue::Raw("dialo".into())),
+        ("db", VarValue::Raw("shop".into())),
         ("replicated", VarValue::Raw("false".into())),
         ("shards", VarValue::Raw("3".into())),
         ("roles", VarValue::Raw(r#"["a", "b"]"#.into())),
@@ -75,7 +75,7 @@ fn raw_values_are_converted_to_the_declared_type() {
 #[test]
 fn typed_values_are_checked() {
     let doc = with_vars(&[
-        ("db", VarValue::Value(s("dialo"))),
+        ("db", VarValue::Value(s("shop"))),
         ("replicated", VarValue::Value(Value::Bool(false))),
         ("shards", VarValue::Value(s("2"))),
     ]);
@@ -111,7 +111,7 @@ fn missing_values_are_errors() {
 #[test]
 fn undeclared_values_are_warnings() {
     let doc = with_vars(&[
-        ("db", VarValue::Raw("dialo".into())),
+        ("db", VarValue::Raw("shop".into())),
         ("dbb", VarValue::Raw("x".into())),
     ]);
     let warnings: Vec<&str> = doc

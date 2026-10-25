@@ -54,8 +54,8 @@ $ openmig deploy --url "$PROD"  # apply pending migrations
 
 ## Documentation
 
-* [`docs/guide.md`](docs/guide.md): getting started, the development loop, CI, deployment, coming
-  from Atlas.
+* [`docs/guide.md`](docs/guide.md): getting started, the development loop, CI, deployment,
+  adopting OpenMig on an existing database.
 * [`docs/spec/hcl.md`](docs/spec/hcl.md): the schema language for PostgreSQL and ClickHouse.
 * [`docs/spec/config.md`](docs/spec/config.md), [`docs/spec/cli.md`](docs/spec/cli.md),
   [`docs/spec/formats.md`](docs/spec/formats.md): configuration, commands, migration files and the

@@ -12,7 +12,7 @@ There are two ways to use it, usually together:
 
 ## Installing
 
-With Nix: `nix run github:dialohq/openmig -- --help`, or add the flake's `packages.openmig` to your
+With Nix: `nix run github:adamchol/openmig -- --help`, or add the flake's `packages.openmig` to your
 dev shell. From source: `cargo install --path crates/openmig`.
 
 OpenMig needs the database server binaries for the scratch database it uses to normalize schemas
@@ -207,13 +207,11 @@ The hint only applies while the old name still exists, so it can stay in the sch
 convenient to remove. In an interactive `sync` or `generate`, OpenMig also asks when a drop and a
 create look like a rename, and prints the `renamed_from` line to add so CI does the same.
 
-## Coming from Atlas
+## Adopting OpenMig on an existing database
 
-* Translate the HCL (the languages are close; see [`spec/hcl.md`](spec/hcl.md)): `table "x" "y"` with
-  `schema = schema.x` becomes `table "x.y"`; `permission` blocks become `grant`/`revoke` blocks (and
-  default `PUBLIC` privileges no longer need declaring); `atlas.hcl` envs become one
-  `[databases.<name>]` table plus environment variables. `openmig inspect --split-by schema` on a
-  database built by Atlas produces a complete starting point.
-* Start a fresh migration directory: `openmig generate baseline` writes one file for the whole schema.
+* Generate the schema files from the database: `openmig inspect --split-by schema -o db/schema`
+  writes one HCL file per schema (plus `cluster.hcl` for roles and extensions). Tidy them up as you
+  like; `openmig diff --from url:$DATABASE_URL --to schema` shows anything that no longer matches.
+* Start the migration directory: `openmig generate baseline` writes one file for the whole schema.
 * On each existing database, record that baseline as applied without running it:
   `openmig deploy --baseline <version-of-the-baseline-file>`.

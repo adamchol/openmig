@@ -364,7 +364,7 @@ fn unterminated_tokens_are_errors() {
 fn clickhouse_statements() {
     let sql = r#"
 -- Create "events" table
-CREATE TABLE `dialo`.`events` (
+CREATE TABLE `shop`.`events` (
   `id` String COMMENT 'it\'s; fine',
   `ts` DateTime64(9) DEFAULT now64() -- a comment; with a semicolon
 ) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')
@@ -436,15 +436,14 @@ fn first_word(sql: &str, dialect: Dialect) -> String {
         .unwrap_or_default()
 }
 
-/// Splits every real migration file of the dialo repository (when checked out next to this one)
-/// and checks that every statement starts with a statement keyword.
+/// Splits every file of real-world migration directories named by `OPENMIG_CORPUS_PG` and
+/// `OPENMIG_CORPUS_CH` and checks that every statement starts with a statement keyword.
 #[test]
-#[ignore = "needs /home/coder/dialo/dialo-db"]
-fn dialo_corpus() {
-    let root = std::path::Path::new("/home/coder/dialo/dialo-db");
+#[ignore = "needs OPENMIG_CORPUS_PG or OPENMIG_CORPUS_CH"]
+fn corpus() {
     let corpora = [
         (
-            "pg",
+            "OPENMIG_CORPUS_PG",
             Dialect::Postgres,
             &[
                 "ALTER", "COMMENT", "CREATE", "DELETE", "DO", "DROP", "GRANT", "INSERT", "REVOKE",
@@ -453,7 +452,7 @@ fn dialo_corpus() {
             ][..],
         ),
         (
-            "ch",
+            "OPENMIG_CORPUS_CH",
             Dialect::ClickHouse,
             &[
                 "ALTER", "CREATE", "DROP", "INSERT", "RENAME", "SELECT", "SET", "TRUNCATE",
@@ -462,11 +461,10 @@ fn dialo_corpus() {
         ),
     ];
     let mut checked = 0;
-    for (sub, dialect, keywords) in corpora {
-        let dir = root.join(sub).join("migrations");
-        if !dir.is_dir() {
+    for (var, dialect, keywords) in corpora {
+        let Some(dir) = std::env::var_os(var).map(std::path::PathBuf::from) else {
             continue;
-        }
+        };
         let mut paths: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap().path())
@@ -519,8 +517,8 @@ fn dialo_corpus() {
         }
         checked += files;
         println!(
-            "{sub}: {files} files, {total} statements (max {max} per file), {dollar} with dollar quotes, {uncommented} without a comment line, first words: {first_words:?}"
+            "{var}: {files} files, {total} statements (max {max} per file), {dollar} with dollar quotes, {uncommented} without a comment line, first words: {first_words:?}"
         );
     }
-    assert!(checked > 0, "no dialo migration files found");
+    assert!(checked > 0, "no migration files found");
 }

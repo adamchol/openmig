@@ -1,6 +1,6 @@
-database "dialo" {}
+database "shop" {}
 
-table "dialo.events" {
+table "shop.events" {
   engine = MergeTree
   column "timestamp" {
     type = DateTime
@@ -21,20 +21,20 @@ role "gateway" {
 
 grant {
   privileges = [SELECT]
-  on         = [database.dialo]
+  on         = [database.shop]
   to         = [role.reader]
 }
 
 grant {
   privileges = [ALL]
-  on         = [table.dialo.events]
+  on         = [table.shop.events]
   to         = [role.gateway]
   with_grant_option = true
 }
 
 grant {
   privileges = [SELECT]
-  on         = [table.dialo.events]
+  on         = [table.shop.events]
   columns    = ["call_id"]
   to         = [role.gateway]
 }

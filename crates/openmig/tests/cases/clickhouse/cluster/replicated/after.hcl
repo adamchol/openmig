@@ -3,13 +3,13 @@ variable "replicated" {
   default = true
 }
 
-database "dialo" {
-  engine = var.replicated ? Replicated("/clickhouse/databases/dialo", "{shard}", "{replica}") : Atomic
+database "shop" {
+  engine = var.replicated ? Replicated("/clickhouse/databases/shop", "{shard}", "{replica}") : Atomic
 }
 
 database "plain" {}
 
-table "dialo.events" {
+table "shop.events" {
   engine = ReplicatedMergeTree("/clickhouse/tables/{uuid}/{shard}", "{replica}")
   column "call_id" {
     type = String

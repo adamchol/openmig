@@ -66,7 +66,7 @@ grant {
 fn missing_variable() {
     insta::assert_snapshot!(render(&[(
         "schema/vars.hcl",
-        "variable \"dialo_db\" {\n  type = string\n}\n"
+        "variable \"shop_db\" {\n  type = string\n}\n"
     )]));
 }
 

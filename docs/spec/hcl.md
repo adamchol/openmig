@@ -19,7 +19,7 @@ syntax. This document is the reference for both engines. Engine-specific blocks 
   schema (`default_schema` setting, `public` for PostgreSQL) or database (`default` for ClickHouse).
 * Cluster-wide objects and nested objects use a plain label: `role "web"`, `column "email"`.
 * Labels are literal strings (no interpolation). `name = "..."` overrides the name used in the
-  database, e.g. `database "dialo" { name = var.dialo_db }` or several overloads of one function.
+  database, e.g. `database "shop" { name = var.shop_db }` or several overloads of one function.
   For a qualified block, `name` replaces only the object name; `schema = schema.x` (PostgreSQL) /
   `database = database.x` (ClickHouse) replaces the namespace. Use these for names containing dots.
   Nested blocks (`column`, `index`, constraints, ...) accept `name` too, which is how `for_each`
@@ -70,9 +70,9 @@ Where a list of columns is expected, plain strings also work: `columns = ["tenan
 ## Variables, locals, functions, loops
 
 ```hcl
-variable "dialo_db" {
+variable "shop_db" {
   type    = string        # string | number | bool | list(...) | map(...) | any
-  default = "dialo"
+  default = "shop"
   description = "Database name"
 }
 
@@ -463,7 +463,7 @@ accepts compares equal to its canonical form.
 | Attribute | Type | Notes |
 |---|---|---|
 | `name` | string | Database name if different from the label. |
-| `engine` | `Atomic` (default) or call | e.g. `Replicated("/clickhouse/databases/dialo", "{shard}", "{replica}")`. |
+| `engine` | `Atomic` (default) or call | e.g. `Replicated("/clickhouse/databases/shop", "{shard}", "{replica}")`. |
 | `comment` | string | |
 
 A database that tables or views name without declaring it is created with `Atomic`.
@@ -549,7 +549,7 @@ so neither users nor their grants and memberships are inspected or planned.
 ```hcl
 grant {
   privileges = [SELECT, INSERT, "ALTER UPDATE"]   # or [ALL]
-  on         = [table.dialo.events, database.otel]   # or ["*.*"], "db.*", "db.table"
+  on         = [table.shop.events, database.otel]   # or ["*.*"], "db.*", "db.table"
   columns    = ["call_id"]                     # optional, tables only
   to         = [role.gateway]                  # role refs or names
   with_grant_option = true

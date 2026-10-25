@@ -190,20 +190,20 @@ fn created_roles(sql: &str) -> Vec<String> {
 }
 
 /// Smoke test on a real migration directory:
-/// `OPENMIG_DIALO_MIGRATIONS=<dir> cargo test -p openmig-postgres -- --ignored --nocapture
-/// dialo_round_trip`. Replays the migrations with `psql`, inspects with roles managed, encodes
+/// `OPENMIG_CORPUS_PG=<dir> cargo test -p openmig-postgres -- --ignored --nocapture
+/// corpus_round_trip`. Replays the migrations with `psql`, inspects with roles managed, encodes
 /// one file per schema, loads and decodes, and compares. Nothing of the inspected database is
-/// written to disk unless `OPENMIG_DIALO_HCL=<dir>` is set.
+/// written to disk unless `OPENMIG_CORPUS_HCL=<dir>` is set.
 #[tokio::test]
-#[ignore = "needs OPENMIG_DIALO_MIGRATIONS and psql"]
-async fn dialo_round_trip() {
-    let Some(dir) = std::env::var_os("OPENMIG_DIALO_MIGRATIONS").map(PathBuf::from) else {
-        eprintln!("skipping: set OPENMIG_DIALO_MIGRATIONS to a migration directory");
+#[ignore = "needs OPENMIG_CORPUS_PG and psql"]
+async fn corpus_round_trip() {
+    let Some(dir) = std::env::var_os("OPENMIG_CORPUS_PG").map(PathBuf::from) else {
+        eprintln!("skipping: set OPENMIG_CORPUS_PG to a migration directory");
         return;
     };
-    // The migrations create cluster-wide roles, also replayed by `dialo_smoke`.
+    // The migrations create cluster-wide roles, also replayed by `corpus_smoke`.
     let _roles = ROLES.write().await;
-    let Some(db) = TestDb::create("omt_dialo_rt").await else {
+    let Some(db) = TestDb::create("omt_corpus_rt").await else {
         return;
     };
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -254,7 +254,7 @@ async fn dialo_round_trip() {
     let started = Instant::now();
     let (_, decoded) = round_trip(&model, &settings, SplitBy::Schema);
     let load_decode_time = started.elapsed().saturating_sub(encode_time);
-    if let Some(out) = std::env::var_os("OPENMIG_DIALO_HCL").map(PathBuf::from) {
+    if let Some(out) = std::env::var_os("OPENMIG_CORPUS_HCL").map(PathBuf::from) {
         std::fs::create_dir_all(&out).unwrap();
         for f in &encoded {
             std::fs::write(out.join(&f.path), &f.content).unwrap();
@@ -271,5 +271,5 @@ async fn dialo_round_trip() {
     for role in &roles {
         drop_role(role).await;
     }
-    assert_eq!(left, right, "dialo round trip differs");
+    assert_eq!(left, right, "corpus round trip differs");
 }

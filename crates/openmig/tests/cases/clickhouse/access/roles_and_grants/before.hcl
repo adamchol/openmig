@@ -1,6 +1,6 @@
-database "dialo" {}
+database "shop" {}
 
-table "dialo.events" {
+table "shop.events" {
   engine = MergeTree
   column "timestamp" {
     type = DateTime
@@ -21,6 +21,6 @@ role "legacy" {
 
 grant {
   privileges = [INSERT]
-  on         = [database.dialo]
+  on         = [database.shop]
   to         = [role.reader]
 }

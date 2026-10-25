@@ -3,14 +3,12 @@
 //!
 //! * `replay_and_inspect`: replay the migration directory into a scratch server and inspect it.
 //! * `inspect_output_round_trips`: replay, inspect, encode as HCL, load and decode it, normalize
-//!   it on a fresh server; the plan between the two must be empty. With a translation of the
-//!   project's own schema files (`OPENMIG_SMOKE_CH_SCHEMA`, a directory of `.hcl` files that is
-//!   not part of this repository), that schema is normalized too and every remaining difference
-//!   to the replayed migrations is printed.
+//!   it on a fresh server; the plan between the two must be empty. With the project's own schema
+//!   files (`OPENMIG_CORPUS_CH_SCHEMA`, a directory of `.hcl` files), that schema is normalized
+//!   too and every remaining difference to the replayed migrations is printed.
 //!
-//! Ignored by default; they run only when the directory exists:
-//! `cargo test -p openmig-clickhouse --test dialo -- --ignored --nocapture`. The directory
-//! defaults to the dialo checkout and can be set with `OPENMIG_SMOKE_CH_MIGRATIONS`.
+//! Ignored by default; they run only when `OPENMIG_CORPUS_CH` names a migration directory:
+//! `OPENMIG_CORPUS_CH=<dir> cargo test -p openmig-clickhouse --test corpus -- --ignored --nocapture`.
 
 mod common;
 
@@ -26,8 +24,6 @@ use openmig_hcl::{LoadOptions, load_sources};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-
-const DEFAULT_DIR: &str = "/home/coder/dialo/dialo-db/ch/migrations";
 
 fn migration_files(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -146,8 +142,11 @@ fn summary(model: &Model) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs a real-world migration directory; run with --ignored"]
 async fn replay_and_inspect() {
-    let dir = std::env::var("OPENMIG_SMOKE_CH_MIGRATIONS").unwrap_or_else(|_| DEFAULT_DIR.into());
-    let dir = Path::new(&dir);
+    let Some(dir) = std::env::var_os("OPENMIG_CORPUS_CH").map(PathBuf::from) else {
+        eprintln!("skipping: set OPENMIG_CORPUS_CH to a migration directory");
+        return;
+    };
+    let dir = dir.as_path();
     if !dir.is_dir() {
         eprintln!("skipping: {} does not exist", dir.display());
         return;
@@ -172,7 +171,7 @@ async fn replay_and_inspect() {
     let started = Instant::now();
     let model = session.inspect(&scope).await.unwrap();
     eprintln!("inspect: {:?}\n{}", started.elapsed(), summary(&model));
-    if std::env::var_os("OPENMIG_SMOKE_PRINT").is_some() {
+    if std::env::var_os("OPENMIG_CORPUS_PRINT").is_some() {
         eprintln!("{}", common::compact(&model));
     }
 
@@ -265,8 +264,11 @@ fn differences(settings: &ChSettings, current: &Model, desired: &Model) -> Vec<S
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs a real-world migration directory; run with --ignored"]
 async fn inspect_output_round_trips() {
-    let dir = std::env::var("OPENMIG_SMOKE_CH_MIGRATIONS").unwrap_or_else(|_| DEFAULT_DIR.into());
-    let dir = Path::new(&dir);
+    let Some(dir) = std::env::var_os("OPENMIG_CORPUS_CH").map(PathBuf::from) else {
+        eprintln!("skipping: set OPENMIG_CORPUS_CH to a migration directory");
+        return;
+    };
+    let dir = dir.as_path();
     if !dir.is_dir() {
         eprintln!("skipping: {} does not exist", dir.display());
         return;
@@ -284,7 +286,7 @@ async fn inspect_output_round_trips() {
     let started = Instant::now();
     let files = ClickHouseEngine::encode(&replayed, &settings, &EncodeOptions::default());
     let hcl: String = files.iter().map(|f| f.content.clone()).collect();
-    if std::env::var_os("OPENMIG_SMOKE_PRINT").is_some() {
+    if std::env::var_os("OPENMIG_CORPUS_PRINT").is_some() {
         eprintln!("{hcl}");
     }
     let sources = files.into_iter().map(|f| (f.path, f.content)).collect();
@@ -301,16 +303,11 @@ async fn inspect_output_round_trips() {
         remaining.join("\n")
     );
 
-    let schema = std::env::var("OPENMIG_SMOKE_CH_SCHEMA")
-        .unwrap_or_else(|_| "/tmp/openmig-dialo-ch-hcl".into());
-    let schema = Path::new(&schema);
-    if !schema.is_dir() {
-        eprintln!(
-            "no translated schema at {}; skipping the comparison",
-            schema.display()
-        );
+    let Some(schema) = std::env::var_os("OPENMIG_CORPUS_CH_SCHEMA").map(PathBuf::from) else {
+        eprintln!("OPENMIG_CORPUS_CH_SCHEMA is not set; skipping the schema comparison");
         return;
-    }
+    };
+    let schema = schema.as_path();
     let mut sources = Vec::new();
     for entry in std::fs::read_dir(schema).unwrap() {
         let path = entry.unwrap().path();

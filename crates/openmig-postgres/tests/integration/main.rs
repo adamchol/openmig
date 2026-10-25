@@ -3,8 +3,8 @@
 //! a scratch server from the testkit pool.
 
 mod common;
-mod dialo;
-mod dialo_replay;
+mod corpus;
+mod corpus_replay;
 mod inspect;
 mod plan;
 mod roundtrip;

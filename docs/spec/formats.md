@@ -36,7 +36,7 @@ CREATE INDEX CONCURRENTLY "users_email_idx" ON "app"."users" ("email");
   * `-- openmig:lock-timeout <duration>`, `-- openmig:statement-timeout <duration>` (`30s`, `5m`).
     A duration is a whole number followed by `ms`, `s`, `m` or `h`.
   * Any other `-- openmig:` line is an error, and so is a repeated directive. Other comments (such
-    as Atlas's `-- atlas:txmode none`) are ignored.
+    as another tool's `-- tool:txmode none`) are ignored.
 * Statements are separated by `;` at the top level (outside strings, quoted identifiers, comments,
   PostgreSQL dollar-quoted bodies and `BEGIN ATOMIC ... END` bodies). Like psql, PostgreSQL files
   also keep `;` inside parentheses (`CREATE RULE ... DO (...; ...)`).
