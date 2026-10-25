@@ -1,0 +1,2 @@
+# Removing a column from the sorting key is not supported, so there is no reverse plan.
+reverse = false

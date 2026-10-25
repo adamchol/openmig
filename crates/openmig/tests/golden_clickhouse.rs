@@ -1,3 +1,6 @@
+#[path = "golden/harness.rs"]
+mod harness;
+
 fn main() {
-    libtest_mimic::run(&libtest_mimic::Arguments::from_args(), Vec::new()).exit();
+    harness::main::<openmig_clickhouse::ClickHouseEngine>(harness::Kind::ClickHouse);
 }

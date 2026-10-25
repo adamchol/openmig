@@ -47,9 +47,12 @@ async fn dispatch(
         EngineKind::Postgres => {
             Box::pin(run_engine::<openmig_postgres::PostgresEngine>(db, cli, ui)).await
         }
-        EngineKind::ClickHouse => Err(Error::Config(
-            "the clickhouse engine is not available in this build yet".into(),
-        )),
+        EngineKind::ClickHouse => {
+            Box::pin(run_engine::<openmig_clickhouse::ClickHouseEngine>(
+                db, cli, ui,
+            ))
+            .await
+        }
     }
 }
 

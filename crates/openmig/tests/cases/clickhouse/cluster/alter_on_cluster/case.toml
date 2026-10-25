@@ -1,0 +1,4 @@
+manage_roles = true
+
+[settings]
+cluster = "{cluster}"
