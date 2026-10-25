@@ -16,6 +16,11 @@
       openmig = pkgs.callPackage ./nix/package.nix {};
     in {
       inherit openmig;
+      # The binary plus PostgreSQL 17 and ClickHouse on PATH, so scratch servers work anywhere.
+      openmig-full = pkgs.callPackage ./nix/full.nix {
+        inherit openmig;
+        postgresql = pkgs.postgresql_17;
+      };
       image = (pkgs.callPackage ./nix/image.nix {inherit openmig;}).base;
       default = openmig;
     });
@@ -36,6 +41,12 @@
 
     checks = forAllSystems (pkgs: {
       inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) openmig;
+      migrations-image = self.lib.mkMigrationsImage {
+        inherit pkgs;
+        name = "openmig-example-migrations";
+        engine = "postgres";
+        migrations = ./crates/openmig/tests/cases/postgres/tables/create;
+      };
       formatting = pkgs.runCommand "check-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check ${./flake.nix} ${./nix}
         touch $out
