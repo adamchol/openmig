@@ -9,21 +9,27 @@
     self,
     nixpkgs,
   }: let
-    systems = ["x86_64-linux" "aarch64-linux"];
-    forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+    linux = ["x86_64-linux" "aarch64-linux"];
+    darwin = ["aarch64-darwin" "x86_64-darwin"];
+    forSystems = systems: f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+    forAllSystems = forSystems (linux ++ darwin);
+    forLinux = forSystems linux;
   in {
     packages = forAllSystems (pkgs: let
       openmig = pkgs.callPackage ./nix/package.nix {};
-    in {
-      inherit openmig;
-      # The binary plus PostgreSQL 17 and ClickHouse on PATH, so scratch servers work anywhere.
-      openmig-full = pkgs.callPackage ./nix/full.nix {
+    in
+      {
         inherit openmig;
-        postgresql = pkgs.postgresql_17;
-      };
-      image = (pkgs.callPackage ./nix/image.nix {inherit openmig;}).base;
-      default = openmig;
-    });
+        # The binary plus PostgreSQL 17 and ClickHouse on PATH, so scratch servers work anywhere.
+        openmig-full = pkgs.callPackage ./nix/full.nix {
+          inherit openmig;
+          postgresql = pkgs.postgresql_17;
+        };
+        default = openmig;
+      }
+      // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+        image = (pkgs.callPackage ./nix/image.nix {inherit openmig;}).base;
+      });
 
     lib = {
       # Build an OCI image that deploys a migration directory:
@@ -39,7 +45,7 @@
         }).mkMigrationsImage (builtins.removeAttrs args ["pkgs"]);
     };
 
-    checks = forAllSystems (pkgs: {
+    checks = forLinux (pkgs: {
       inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) openmig;
       integration = pkgs.callPackage ./nix/integration.nix {
         openmig = self.packages.${pkgs.stdenv.hostPlatform.system}.openmig;

@@ -19,7 +19,11 @@ const SUPERUSER: &str = "openmig";
 /// Fixed: every server listens only on a unix socket in its own directory.
 const PORT: u16 = 5432;
 const DEFAULT_RUN_AS: &str = "nobody";
+#[cfg(not(target_os = "macos"))]
 const DEFAULT_INITDB_ARGS: [&str; 2] = ["--encoding=UTF8", "--locale=C.UTF-8"];
+// macOS has no `C.UTF-8` locale; `C` sorts the same way.
+#[cfg(target_os = "macos")]
+const DEFAULT_INITDB_ARGS: [&str; 2] = ["--encoding=UTF8", "--locale=C"];
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);

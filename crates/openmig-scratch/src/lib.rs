@@ -61,7 +61,7 @@ pub struct PgSpec {
     pub version: Option<u32>,
     /// User to run the server as when OpenMig runs as root. Default `nobody`.
     pub run_as: Option<String>,
-    /// Extra `initdb` arguments. Default `--encoding=UTF8 --locale=C.UTF-8`.
+    /// Extra `initdb` arguments. Default `--encoding=UTF8 --locale=C.UTF-8` (`--locale=C` on macOS).
     pub initdb_args: Option<Vec<String>>,
     /// Extra server settings passed as `-c key=value`.
     pub settings: BTreeMap<String, String>,
