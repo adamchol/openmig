@@ -256,3 +256,71 @@ async fn generate_base_keeps_one_migration_per_branch() {
     assert!(content.contains("\"created_at\""), "{content}");
     project.ok(&["check", "--base", "main"]).await;
 }
+
+/// Answers every prompt with yes and accepts every proposed rename, like a user at a terminal.
+#[derive(Default)]
+struct YesUi {
+    messages: std::sync::Mutex<Vec<String>>,
+}
+
+impl openmig::Ui for YesUi {
+    fn is_interactive(&self) -> bool {
+        true
+    }
+
+    fn info(&self, message: &str) {
+        self.messages.lock().unwrap().push(message.to_owned());
+    }
+
+    fn warn(&self, message: &str) {
+        self.messages
+            .lock()
+            .unwrap()
+            .push(format!("warning: {message}"));
+    }
+
+    fn show_plan(&self, title: &str, plan: &openmig_core::Plan) {
+        self.messages
+            .lock()
+            .unwrap()
+            .push(format!("{title}\n{}", plan.to_sql()));
+    }
+
+    fn confirm(&self, _prompt: &str) -> bool {
+        true
+    }
+
+    fn choose_renames(
+        &self,
+        candidates: &[openmig_core::RenameCandidate],
+    ) -> Vec<openmig_core::RenameCandidate> {
+        candidates.to_vec()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn interactive_sync_offers_renames() {
+    let lease = openmig_testkit::postgres().await;
+    let dev = lease.create_database("e2e_rename").await;
+    let project = Project::new(&dev);
+    project.schema(V1);
+    project.ok(&["sync", "--yes"]).await;
+
+    project.schema(&V1.replace("\"email\"", "\"email_address\""));
+    let config = project.path().join("openmig.toml");
+    let cli =
+        Cli::try_parse_from(["openmig", "--config", config.to_str().unwrap(), "sync"]).unwrap();
+    let ui = YesUi::default();
+    let code = openmig::flows::run(cli, &ui).await.unwrap();
+    assert_eq!(code, 0);
+    let out = ui.messages.lock().unwrap().join("\n");
+    assert!(
+        out.contains("RENAME COLUMN \"email\" TO \"email_address\""),
+        "{out}"
+    );
+    assert!(!out.contains("DROP COLUMN"), "{out}");
+    assert!(
+        out.contains("renamed_from = \"email\""),
+        "the hint for CI must be printed:\n{out}"
+    );
+}
