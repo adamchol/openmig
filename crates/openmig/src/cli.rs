@@ -1,14 +1,25 @@
 //! Command-line definitions.
 
+use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+const STYLES: Styles = Styles::styled()
+    .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
+    .usage(AnsiColor::Green.on_default().effects(Effects::BOLD))
+    .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+    .placeholder(AnsiColor::Cyan.on_default())
+    .valid(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+    .invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD))
+    .error(AnsiColor::Red.on_default().effects(Effects::BOLD));
 
 #[derive(Debug, Parser)]
 #[command(
     name = "openmig",
     version,
     about = "Declarative and versioned schema migrations for PostgreSQL and ClickHouse",
-    propagate_version = true
+    propagate_version = true,
+    styles = STYLES
 )]
 pub struct Cli {
     #[command(flatten)]
