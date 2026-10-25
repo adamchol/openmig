@@ -197,7 +197,10 @@ where
         while let Some(message) = messages.next().await {
             match message {
                 Ok(AsyncMessage::Notice(n)) => match n.severity() {
-                    "WARNING" => tracing::warn!(target: "openmig::postgres", "{}", n.message()),
+                    // Shutdown notices arrive when a scratch server stops under an open session.
+                    "WARNING" if !n.code().code().starts_with("57P") => {
+                        tracing::warn!(target: "openmig::postgres", "{}", n.message())
+                    }
                     severity => {
                         tracing::debug!(target: "openmig::postgres", severity, "{}", n.message())
                     }
