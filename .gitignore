@@ -1,4 +1,6 @@
-/target/
-/result*
+target/
+result*
 .direnv/
+.envrc
+.dnvr/
 .claude/

@@ -12,8 +12,15 @@ rustPlatform.buildRustPackage {
 
   buildType = "debug";
   dontCargoBuild = true;
-  nativeCheckInputs = [postgresql clickhouse git];
-  cargoTestFlags = ["--workspace" "--no-fail-fast"];
+  nativeCheckInputs = [
+    postgresql
+    clickhouse
+    git
+  ];
+  cargoTestFlags = [
+    "--workspace"
+    "--no-fail-fast"
+  ];
 
   preCheck = ''
     export HOME=$TMPDIR

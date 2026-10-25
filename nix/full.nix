@@ -8,15 +8,18 @@
 }:
 symlinkJoin {
   name = "openmig-full-${openmig.version}";
-  paths = [openmig];
-  nativeBuildInputs = [makeWrapper];
+  paths = [ openmig ];
+  nativeBuildInputs = [ makeWrapper ];
   postBuild = ''
     wrapProgram $out/bin/openmig \
-      --suffix PATH : ${lib.makeBinPath [postgresql clickhouse]}
+      --suffix PATH : ${
+        lib.makeBinPath [
+          postgresql
+          clickhouse
+        ]
+      }
   '';
-  meta =
-    openmig.meta
-    // {
-      description = "OpenMig with PostgreSQL and ClickHouse binaries for scratch servers";
-    };
+  meta = openmig.meta // {
+    description = "OpenMig with PostgreSQL and ClickHouse binaries for scratch servers";
+  };
 }
