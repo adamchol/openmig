@@ -72,9 +72,12 @@ fn role_options(role: &Role, base: Option<&Role>) -> Vec<String> {
     out
 }
 
+/// `CREATE ROLE` guarded by an existence check: roles are cluster-wide, so a database's
+/// migrations must not fail on a cluster where another database already created the role. An
+/// existing role is left as it is; differing attributes show up as drift.
 pub(crate) fn create_role(role: &Role) -> String {
     let options = role_options(role, None);
-    if options.is_empty() {
+    let create = if options.is_empty() {
         format!("CREATE ROLE {}", ident(&role.name))
     } else {
         format!(
@@ -82,18 +85,22 @@ pub(crate) fn create_role(role: &Role) -> String {
             ident(&role.name),
             options.join(" ")
         )
-    }
+    };
+    guarded_create_role(&role.name, &create)
+}
+
+fn guarded_create_role(name: &str, create: &str) -> String {
+    let body = format!(
+        "BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = {}) THEN {create}; END IF; END",
+        literal(name)
+    );
+    let tag = openmig_core::sql::dollar_tag(&body);
+    format!("DO {tag}{body}{tag}")
 }
 
 /// `CREATE ROLE ... NOLOGIN` unless a role of that name exists.
 pub(crate) fn create_role_if_missing(name: &str) -> String {
-    let body = format!(
-        "BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = {}) THEN CREATE ROLE {} NOLOGIN; END IF; END",
-        literal(name),
-        ident(name)
-    );
-    let tag = openmig_core::sql::dollar_tag(&body);
-    format!("DO {tag}{body}{tag}")
+    guarded_create_role(name, &format!("CREATE ROLE {} NOLOGIN", ident(name)))
 }
 
 pub(crate) fn alter_role(current: &Role, desired: &Role) -> Option<String> {
@@ -177,8 +184,9 @@ mod tests {
         r.valid_until = Some("2030-01-01 00:00:00+00".into());
         assert_eq!(
             create_role(&r),
-            "CREATE ROLE \"web\" WITH NOINHERIT LOGIN CONNECTION LIMIT 10 VALID UNTIL '2030-01-01 \
-             00:00:00+00'"
+            "DO $$BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'web') THEN \
+             CREATE ROLE \"web\" WITH NOINHERIT LOGIN CONNECTION LIMIT 10 VALID UNTIL '2030-01-01 \
+             00:00:00+00'; END IF; END$$"
         );
         let mut s = r.clone();
         s.login = false;

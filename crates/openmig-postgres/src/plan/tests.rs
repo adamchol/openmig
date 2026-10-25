@@ -252,7 +252,10 @@ fn scratch_builds_never_drop_and_create_roles() {
         .insert("public".into(), Schema::new("public"));
     let plan = sql(&plan_with(&current, &desired, PlanMode::Scratch).unwrap());
     assert!(plan[0].starts_with("DO $$BEGIN IF NOT EXISTS"), "{plan:#?}");
-    assert_eq!(plan[1], "CREATE ROLE \"web\"");
+    assert!(
+        plan[1].contains("THEN CREATE ROLE \"web\"; END IF"),
+        "{plan:#?}"
+    );
     assert!(!plan.iter().any(|s| s.starts_with("DROP")), "{plan:#?}");
 }
 

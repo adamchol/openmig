@@ -1,5 +1,5 @@
 -- Create role "svc_admin"
-CREATE ROLE "svc_admin" WITH CREATEROLE NOINHERIT VALID UNTIL '2030-01-01 00:00:00+00';
+DO $$BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'svc_admin') THEN CREATE ROLE "svc_admin" WITH CREATEROLE NOINHERIT VALID UNTIL '2030-01-01 00:00:00+00'; END IF; END$$;
 -- Alter role "svc_api"
 ALTER ROLE "svc_api" WITH CONNECTION LIMIT 10;
 -- Set membership of role "svc_api" in role "svc_base"

@@ -738,7 +738,7 @@ async fn roles_and_memberships() {
     let check = |name: &str, plan: &Plan| {
         let text = plan.to_sql();
         assert!(
-            !text.contains("pg_"),
+            !text.replace("pg_catalog.pg_roles", "").contains("pg_"),
             "{name}: touches other roles:\n{text}"
         );
     };
