@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "Apache-2.0"
-authors = ["Adam Cholewiński <adam@dialo.ai>"]
+authors = ["Adam Cholewiński <me@adamchol.com>"]
 repository = "https://github.com/dialohq/openmig"
 
 [workspace.dependencies]
