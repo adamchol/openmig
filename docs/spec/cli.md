@@ -95,3 +95,4 @@ directory), `url:<URL>` or a path to HCL files.
 | 5 | Timed out waiting for the migration lock |
 | 6 | Database unreachable |
 | 7 | Unsupported change |
+| 129, 130, 143 | Stopped by SIGHUP, SIGINT or SIGTERM (scratch servers are stopped first) |

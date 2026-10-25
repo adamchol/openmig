@@ -136,15 +136,10 @@ async fn watch<E: Engine>(ctx: &Context<E>, args: &SyncArgs, ui: &dyn Ui) -> Res
             super::report_error(&e, false);
         }
         ui.info("watching schema files for changes (Ctrl-C to stop)");
-        tokio::select! {
-            changed = rx.recv() => {
-                if changed.is_none() {
-                    break;
-                }
-                while rx.try_recv().is_ok() {}
-            }
-            _ = tokio::signal::ctrl_c() => break,
+        if rx.recv().await.is_none() {
+            break;
         }
+        while rx.try_recv().is_ok() {}
     }
     drop(debouncer);
     let _ = scratch.stop().await;
