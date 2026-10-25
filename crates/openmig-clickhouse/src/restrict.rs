@@ -8,9 +8,11 @@ use openmig_core::{ObjectKind, Scope};
 /// * databases selected by `scope.schemas` and not excluded, and in them every object that is not
 ///   excluded (excludes match each object kind by its path, see [`crate::model::Object`]);
 /// * functions that are not excluded;
-/// * roles, users and role memberships only when `scope.manage_roles`;
-/// * grants of managed grantees (every role and user with `manage_roles`, otherwise the roles
-///   declared in the schema) on objects in scope;
+/// * roles and role memberships only when `scope.manage_roles`;
+/// * grants of managed grantees (every role with `manage_roles`, otherwise the roles declared in
+///   the schema) on objects in scope;
+/// * never users, nor grants and role memberships of users: users are not managed (their
+///   authentication cannot be declared).
 /// * row policies on tables in scope;
 /// * dependencies between remaining objects.
 pub fn restrict(model: &mut Model, scope: &Scope) {
@@ -53,17 +55,18 @@ pub fn restrict(model: &mut Model, scope: &Scope) {
         .functions
         .retain(|n, _| !excluded(ObjectKind::Function, &[n]));
 
+    model.users.clear();
     if scope.manage_roles {
         model.roles.retain(|n, _| !excluded(ObjectKind::Role, &[n]));
-        model.users.retain(|n, _| !excluded(ObjectKind::User, &[n]));
     } else {
         model.roles.clear();
-        model.users.clear();
         model.role_grants.clear();
     }
     let grantee_managed = |grantee: &Grantee| {
-        let declared =
-            scope.manage_roles || scope.declared_roles.iter().any(|r| r == grantee.name());
+        let Grantee::Role(name) = grantee else {
+            return false;
+        };
+        let declared = scope.manage_roles || scope.declared_roles.iter().any(|r| r == name);
         declared && !ex.is_excluded(&grantee.object_ref())
     };
     model
@@ -196,16 +199,9 @@ mod tests {
             .iter()
             .map(|g| format!("{} {}", g.grantee.name(), g.target_sql()))
             .collect();
-        assert_eq!(
-            grants,
-            [
-                "web `app`.*",
-                "web *.*",
-                "undeclared *.*",
-                "app_user `app`.*"
-            ]
-        );
-        assert_eq!(m.role_grants.len(), 1);
+        assert_eq!(grants, ["web `app`.*", "web *.*", "undeclared *.*"]);
+        assert!(m.users.is_empty());
+        assert!(m.role_grants.is_empty());
         assert!(m.row_policies.is_empty());
         assert_eq!(m.dependencies.len(), 1);
     }

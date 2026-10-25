@@ -201,13 +201,60 @@ decoded model always declares. Roles named by the decoded model but not declared
 
 ### ClickHouse planning rules
 
-* `ALTER TABLE`: `ADD/DROP/MODIFY/RENAME COLUMN`, codec, default kind/expression, column and table
-  `TTL`, `MODIFY/RESET SETTING`, `ADD/DROP INDEX`, `MODIFY COMMENT`.
-* Unsupported: changing the engine, `ORDER BY` (except appending newly added columns), `PRIMARY KEY`,
-  `PARTITION BY`, or the type of a key column.
-* Materialized views with `TO`: drop + create (no data loss).
-* `DROP TABLE ... SYNC`. DDL runs with `alter_sync = 2`, `mutations_sync = 2`.
-* Cluster rules: see `hcl.md`.
+* Tables are altered in place, one `ALTER TABLE` statement per command:
+  `ADD COLUMN ... AFTER` (in declared position), `DROP COLUMN`, `RENAME COLUMN`, and per column
+  property `MODIFY COLUMN c <type>` / `DEFAULT|MATERIALIZED|ALIAS|EPHEMERAL <expr>` /
+  `CODEC(...)` / `TTL <expr>`, `COMMENT COLUMN`, and `MODIFY COLUMN c REMOVE <property>` for
+  removals (removals run first: a codec must go before a column becomes an `ALIAS`).
+  `ADD/DROP INDEX`, `ADD/DROP PROJECTION`, `ADD/DROP CONSTRAINT` (a changed one is dropped and
+  added), `MODIFY/REMOVE SAMPLE BY`, `MODIFY/REMOVE TTL`, `MODIFY SETTING`, `RESET SETTING`
+  (never `index_granularity`, which is fixed at creation and added by the server),
+  `MODIFY COMMENT`. Column order differences of existing columns are ignored.
+* Appending newly added columns to the sorting key is one statement
+  (`ADD COLUMN ..., MODIFY ORDER BY (...)`); the primary key stays, so the schema must declare it
+  (`primary_key`) with the old sorting key.
+* Unsupported (error with a hint to write the migration with `openmig new`, or to drop and
+  recreate with `sync --recreate`): changing the engine (also of a database), `TimeSeries` targets,
+  `PARTITION BY`, `PRIMARY KEY`, `ORDER BY` other than appending, the type of a key column,
+  `index_granularity`, column statistics or column settings, the storage of a role, and recreating
+  a materialized view that owns an inner table (its rows would be lost). With `allow_recreate` the
+  object is dropped and created (destructive).
+* Views: `CREATE OR REPLACE VIEW`. Materialized views with `TO`: `ALTER TABLE ... MODIFY QUERY`
+  when the query changes (the server also replaces the stored column list), `MODIFY COMMENT` for
+  the comment, otherwise drop + create (no data loss; also when only the stored column list is
+  stale because a source table changed). Dictionaries and SQL functions: `CREATE OR REPLACE`.
+  Row policies: `CREATE ROW POLICY OR REPLACE`.
+* ClickHouse refuses to drop or rename a table that materialized views or dictionaries depend on,
+  and to drop a column a materialized view references: such dependants (current model, hard
+  edges) that the plan keeps are dropped before and created after the change, and `DROP COLUMN`
+  statements run after the views that stop using the columns.
+* Ordering: revokes first; then roles, databases, functions, tables and renames, table alters,
+  dictionaries, views, materialized views, row policies, grants and role grants; then drops in
+  reverse dependency order (row policies, materialized views, views, dictionaries, column drops,
+  tables, functions, databases, roles). Drops that recreate an object run right before its
+  creation. Creation follows the desired model's dependencies (soft edges from SQL text are
+  dropped when they would form a cycle) and objects inside a created database or granted to a
+  created role follow it.
+* Privileges are compared as collapsed sets per grantee, object, columns and grant option:
+  removed privileges are revoked before added ones are granted (a group replaced by some of its
+  members is revoked, then the members granted); granting `ALL` needs no revokes; a privilege that
+  only loses its grant option gets `REVOKE GRANT OPTION FOR`, a role membership that loses its
+  admin option `REVOKE ADMIN OPTION FOR`. Partial revokes are planned as `REVOKE` (and lifted with
+  `GRANT`). Users are not managed (`restrict` removes them with their grants and memberships).
+* Statements never need a transaction-free mode (ClickHouse has no transactions; files run
+  statement by statement) and are idempotent where ClickHouse allows it: `IF [NOT] EXISTS` on
+  creates, drops and column/index/projection/constraint commands, `CREATE OR REPLACE` for views,
+  dictionaries and functions. `DROP TABLE|VIEW|DICTIONARY|DATABASE ... SYNC`. DDL runs with
+  `alter_sync = 2`, `mutations_sync = 2`, `distributed_ddl_output_mode = throw`.
+* Generated DDL quotes every identifier; expressions, types and engines are the server's
+  canonical text from the inspected model. `PRIMARY KEY` is written only when it differs from
+  `ORDER BY`; a MergeTree table with an empty sorting key gets `ORDER BY tuple()`.
+* Cluster rules (`hcl.md`): `ON CLUSTER` for databases, functions, tables and views in
+  non-`Replicated` databases, and roles, grants, role memberships and row policies unless stored in
+  the `replicated` user directory (which replicates itself).
+* Scratch builds plan no drops: the pristine server has only the `default` database, which the
+  decoded model always declares. Roles named by the decoded model but not declared
+  (`external_roles`) are created in scratch builds.
 
 ## Renames
 
@@ -220,6 +267,8 @@ decoded model always declares. Roles named by the decoded model but not declared
   partition and inheritance parents, sequence owners, column lists of constraints and indexes,
   unqualified references to the renamed column in expressions of its table, and `nextval` defaults
   of moved sequences.
+* ClickHouse: tables (`RENAME TABLE`, also across databases) and columns (`RENAME COLUMN`). Column
+  hints may name the table by its new name when it is renamed too.
 * Interactive (TTY only, `sync` and local `generate`): drop + create pairs of the same kind in the same
   container are offered as renames — columns with the same type and nullability, tables whose column
   sets overlap by at least 70%. Accepting prints the `renamed_from` line to add to the schema. Without

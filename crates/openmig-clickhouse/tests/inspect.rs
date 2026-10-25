@@ -207,8 +207,21 @@ fn check_model(model: &Model) {
     assert_eq!(gateway[0].level(), GrantLevel::Table);
     assert_eq!(gateway[0].privileges, BTreeSet::from(["ALL".to_owned()]));
     assert!(gateway[0].grant_option);
-    assert!(model.users.contains_key("app"));
-    assert!(!model.users.contains_key("default"));
+    // Users are not managed: neither they nor their grants and memberships are compared.
+    assert!(model.users.is_empty());
+    assert!(
+        model
+            .grants
+            .iter()
+            .all(|g| matches!(g.grantee, Grantee::Role(_)))
+    );
+    assert!(
+        model
+            .role_grants
+            .iter()
+            .all(|g| matches!(g.grantee, Grantee::Role(_)))
+    );
+    assert_eq!(model.role_grants.len(), 1);
     assert_eq!(model.roles["admin"].storage, "replicated");
     assert_eq!(model.roles["reader"].storage, "local_directory");
 

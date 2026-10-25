@@ -429,26 +429,6 @@ Model {
             storage: "local_directory",
         },
     },
-    users: {
-        "app": User {
-            name: "app",
-            storage: "local_directory",
-            host_ip: [
-                "10.0.0.0/8",
-            ],
-            default_roles: RoleSet {
-                names: [
-                    "reader",
-                ],
-            },
-            default_database: Some(
-                "analytics",
-            ),
-            grantees: RoleSet {
-                all: true,
-            },
-        },
-    },
     grants: [
         Grant {
             grantee: Role(
@@ -545,12 +525,6 @@ Model {
             ),
             role: "reader",
             admin_option: true,
-        },
-        RoleGrant {
-            grantee: User(
-                "app",
-            ),
-            role: "reader",
         },
     ],
     row_policies: {

@@ -8,15 +8,21 @@
 //! * [`ClickHouseEngine`]: the [`Engine`] implementation.
 
 pub mod ddl;
+pub mod decode;
+mod deps;
 pub mod diff;
+pub mod encode;
 mod history;
 mod http;
 mod inspect;
 pub mod model;
+pub mod plan;
 pub mod privileges;
+pub mod rename;
 pub mod restrict;
 mod session;
 mod settings;
+pub mod spec;
 
 pub use diff::Change;
 pub use model::Model;
@@ -44,34 +50,24 @@ impl Engine for ClickHouseEngine {
     type Change = Change;
     type Session = ChSession;
 
-    fn schema_spec(_settings: &ChSettings) -> SchemaSpec {
-        unimplemented!("clickhouse schema spec")
+    fn schema_spec(settings: &ChSettings) -> SchemaSpec {
+        spec::schema_spec(settings)
     }
 
-    fn decode(_doc: &Document, _settings: &ChSettings) -> Result<Desired<Model>, Error> {
-        unimplemented!("clickhouse decode")
+    fn decode(doc: &Document, settings: &ChSettings) -> Result<Desired<Model>, Error> {
+        decode::decode(doc, settings)
     }
 
-    fn encode(
-        _model: &Model,
-        _settings: &ChSettings,
-        _options: &EncodeOptions,
-    ) -> Vec<EncodedFile> {
-        unimplemented!("clickhouse encode")
+    fn encode(model: &Model, settings: &ChSettings, options: &EncodeOptions) -> Vec<EncodedFile> {
+        encode::encode(model, settings, options)
     }
 
     fn restrict(model: &mut Model, scope: &Scope) {
         restrict::restrict(model, scope);
     }
 
-    /// Declared roles and users: both can receive grants.
     fn declared_roles(model: &Model) -> Vec<String> {
-        model
-            .roles
-            .keys()
-            .chain(model.users.keys())
-            .cloned()
-            .collect()
+        model.roles.keys().cloned().collect()
     }
 
     fn data_tables(_model: &Model) -> Vec<DataTable> {
@@ -82,29 +78,29 @@ impl Engine for ClickHouseEngine {
         model.is_empty()
     }
 
-    fn resolve_hints(_current: &Model, _desired: &Model, _hints: &RenameHints) -> RenameSet {
-        unimplemented!("clickhouse rename hints")
+    fn resolve_hints(current: &Model, desired: &Model, hints: &RenameHints) -> RenameSet {
+        rename::resolve_hints(current, desired, hints)
     }
 
-    fn rename_candidates(_current: &Model, _desired: &Model) -> Vec<RenameCandidate> {
-        unimplemented!("clickhouse rename candidates")
+    fn rename_candidates(current: &Model, desired: &Model) -> Vec<RenameCandidate> {
+        rename::rename_candidates(current, desired)
     }
 
     fn diff(
-        _current: &Model,
-        _desired: &Model,
-        _ctx: &DiffContext<'_, Self>,
+        current: &Model,
+        desired: &Model,
+        ctx: &DiffContext<'_, Self>,
     ) -> Result<Vec<Change>, Error> {
-        unimplemented!("clickhouse diff")
+        diff::diff(current, desired, ctx)
     }
 
     fn plan(
-        _changes: Vec<Change>,
-        _current: &Model,
-        _desired: &Model,
-        _ctx: &DiffContext<'_, Self>,
+        changes: Vec<Change>,
+        current: &Model,
+        desired: &Model,
+        ctx: &DiffContext<'_, Self>,
     ) -> Result<Plan, Error> {
-        unimplemented!("clickhouse plan")
+        plan::plan(changes, current, desired, ctx)
     }
 
     /// `max_execution_time` in whole seconds (rounded up); it lasts for the rest of the HTTP

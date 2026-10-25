@@ -72,7 +72,7 @@ pub struct Model {
     /// (`Scope::manage_roles`).
     pub roles: BTreeMap<String, Role>,
     /// Users stored in SQL-managed user directories, without the connecting user and `default`.
-    /// Empty unless roles are managed.
+    /// Read by inspection but removed by [`crate::restrict::restrict`]: users are not managed.
     pub users: BTreeMap<String, User>,
     /// Privilege grants of managed grantees, in canonical form: one entry per grantee, object,
     /// grant option and set of columns, privileges collapsed with the server's privilege

@@ -1,7 +1,14 @@
-//! Smoke test: replay a real-world ClickHouse migration directory (Replicated databases,
-//! `ON CLUSTER '{cluster}'`, TimeSeries, roles and grants) into a scratch server and inspect it.
+//! Acceptance tests on a real-world ClickHouse setup (Replicated databases,
+//! `ON CLUSTER '{cluster}'`, TimeSeries, roles and grants):
 //!
-//! Ignored by default; it runs only when the directory exists:
+//! * `replay_and_inspect`: replay the migration directory into a scratch server and inspect it.
+//! * `inspect_output_round_trips`: replay, inspect, encode as HCL, load and decode it, normalize
+//!   it on a fresh server; the plan between the two must be empty. With a translation of the
+//!   project's own schema files (`OPENMIG_SMOKE_CH_SCHEMA`, a directory of `.hcl` files that is
+//!   not part of this repository), that schema is normalized too and every remaining difference
+//!   to the replayed migrations is printed.
+//!
+//! Ignored by default; they run only when the directory exists:
 //! `cargo test -p openmig-clickhouse --test dialo -- --ignored --nocapture`. The directory
 //! defaults to the dialo checkout and can be set with `OPENMIG_SMOKE_CH_MIGRATIONS`.
 
@@ -9,9 +16,13 @@ mod common;
 
 use common::connect;
 use openmig_clickhouse::privileges::PrivilegeCatalog;
-use openmig_clickhouse::{ChSession, ChSettings, Model};
+use openmig_clickhouse::{ChSession, ChSettings, ClickHouseEngine, Model};
 use openmig_core::sql::split;
-use openmig_core::{Dialect, Scope, Session};
+use openmig_core::{
+    ChangeInfo, Dialect, DiffContext, EncodeOptions, Engine, ExecErrorKind, PlanMode, RenameSet,
+    Scope, Session,
+};
+use openmig_hcl::{LoadOptions, load_sources};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -171,4 +182,151 @@ async fn replay_and_inspect() {
     assert_eq!(again, model, "replaying twice must inspect to equal models");
     assert_eq!(second, failures);
     assert!(failures.is_empty(), "failures:\n{}", failures.join("\n"));
+}
+
+fn scope() -> Scope {
+    Scope {
+        manage_roles: true,
+        ..Scope::default()
+    }
+}
+
+fn context<'a>(
+    settings: &'a ChSettings,
+    scope: &'a Scope,
+    renames: &'a RenameSet,
+    mode: PlanMode,
+) -> DiffContext<'a, ClickHouseEngine> {
+    DiffContext {
+        settings,
+        scope,
+        renames,
+        mode,
+        allow_recreate: false,
+    }
+}
+
+/// Load and decode HCL sources, apply them to the reset server (retrying statements that
+/// reference objects created later) and inspect the result.
+async fn normalize(
+    session: &mut ChSession,
+    settings: &ChSettings,
+    sources: Vec<(PathBuf, String)>,
+) -> Model {
+    let spec = ClickHouseEngine::schema_spec(settings);
+    let doc = load_sources(
+        sources,
+        &LoadOptions {
+            spec: &spec,
+            vars: Default::default(),
+        },
+    )
+    .unwrap_or_else(|e| panic!("{}", e.render(false)));
+    let desired = ClickHouseEngine::decode(&doc, settings).unwrap_or_else(|e| panic!("{e}"));
+    session.reset().await.unwrap();
+    let scope = scope();
+    let renames = RenameSet::default();
+    let ctx = context(settings, &scope, &renames, PlanMode::Scratch);
+    let pristine = session.inspect(&scope).await.unwrap();
+    let changes = ClickHouseEngine::diff(&pristine, &desired.model, &ctx).unwrap();
+    let plan = ClickHouseEngine::plan(changes, &pristine, &desired.model, &ctx).unwrap();
+    let mut queue: Vec<String> = plan.statements.into_iter().map(|s| s.sql).collect();
+    while !queue.is_empty() {
+        let before = queue.len();
+        let mut deferred = Vec::new();
+        for sql in queue {
+            match session.execute(&sql).await {
+                Ok(()) => {}
+                Err(e) if e.kind == ExecErrorKind::UndefinedObject => deferred.push(sql),
+                Err(e) => panic!("{sql}\n{e}"),
+            }
+        }
+        assert!(
+            deferred.len() < before,
+            "cannot apply:\n{}",
+            deferred.join("\n")
+        );
+        queue = deferred;
+    }
+    session.inspect(&scope).await.unwrap()
+}
+
+/// Summaries of the changes from `current` to `desired`.
+fn differences(settings: &ChSettings, current: &Model, desired: &Model) -> Vec<String> {
+    let scope = scope();
+    let renames = RenameSet::default();
+    let ctx = context(settings, &scope, &renames, PlanMode::Generate);
+    match ClickHouseEngine::diff(current, desired, &ctx) {
+        Ok(changes) => changes.iter().map(ChangeInfo::summary).collect(),
+        Err(e) => vec![format!("error: {e}")],
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs a real-world migration directory; run with --ignored"]
+async fn inspect_output_round_trips() {
+    let dir = std::env::var("OPENMIG_SMOKE_CH_MIGRATIONS").unwrap_or_else(|_| DEFAULT_DIR.into());
+    let dir = Path::new(&dir);
+    if !dir.is_dir() {
+        eprintln!("skipping: {} does not exist", dir.display());
+        return;
+    }
+    let lease = openmig_testkit::clickhouse().await;
+    let settings = ChSettings {
+        cluster: Some("{cluster}".into()),
+        ..ChSettings::default()
+    };
+    let mut session = connect(&lease, &settings).await;
+    let failures = replay(&mut session, &migration_files(dir)).await;
+    assert!(failures.is_empty(), "failures:\n{}", failures.join("\n"));
+    let replayed = session.inspect(&scope()).await.unwrap();
+
+    let started = Instant::now();
+    let files = ClickHouseEngine::encode(&replayed, &settings, &EncodeOptions::default());
+    let hcl: String = files.iter().map(|f| f.content.clone()).collect();
+    if std::env::var_os("OPENMIG_SMOKE_PRINT").is_some() {
+        eprintln!("{hcl}");
+    }
+    let sources = files.into_iter().map(|f| (f.path, f.content)).collect();
+    let normalized = normalize(&mut session, &settings, sources).await;
+    let remaining = differences(&settings, &replayed, &normalized);
+    eprintln!(
+        "encode + decode + normalize: {:?}, {} lines of HCL",
+        started.elapsed(),
+        hcl.lines().count()
+    );
+    assert!(
+        remaining.is_empty(),
+        "inspect output does not round-trip:\n{}\n{hcl}",
+        remaining.join("\n")
+    );
+
+    let schema = std::env::var("OPENMIG_SMOKE_CH_SCHEMA")
+        .unwrap_or_else(|_| "/tmp/openmig-dialo-ch-hcl".into());
+    let schema = Path::new(&schema);
+    if !schema.is_dir() {
+        eprintln!(
+            "no translated schema at {}; skipping the comparison",
+            schema.display()
+        );
+        return;
+    }
+    let mut sources = Vec::new();
+    for entry in std::fs::read_dir(schema).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "hcl") {
+            let text = std::fs::read_to_string(&path).unwrap();
+            sources.push((path, text));
+        }
+    }
+    sources.sort();
+    let declared = normalize(&mut session, &settings, sources).await;
+    let differences = differences(&settings, &replayed, &declared);
+    eprintln!(
+        "translated schema vs replayed migrations: {} differences",
+        differences.len()
+    );
+    for d in &differences {
+        eprintln!("  {d}");
+    }
 }

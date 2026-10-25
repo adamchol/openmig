@@ -447,82 +447,135 @@ column are equal.
 
 ## ClickHouse
 
-Supported servers: ClickHouse 24.8 and later (tested on 26.x). Default database: `default`.
+Supported servers: ClickHouse 24.8 and later (tested on 26.x). Default database: `default`
+(setting `default_database`). The `default` database (and the configured default database) always
+exists and can be referenced as `database.default` without a block.
+
+Values that are SQL types, engines, codecs, index types or layouts are written as identifiers or
+calls (`String`, `Map(LowCardinality(String), String)`, `ZSTD(1)`, `set(1024)`) and rendered with
+string arguments as single-quoted literals; anything else is a string with the SQL text
+(`type = "Enum8('a' = 1, 'b' = 2)"`). Expressions (`order_by` entries, `ttl`, `materialized`, `as`,
+...) are SQL strings. The schema is normalized by a scratch server, so any spelling the server
+accepts compares equal to its canonical form.
 
 ### `database "name"`
 
 | Attribute | Type | Notes |
 |---|---|---|
-| `name` | string | |
+| `name` | string | Database name if different from the label. |
 | `engine` | `Atomic` (default) or call | e.g. `Replicated("/clickhouse/databases/dialo", "{shard}", "{replica}")`. |
 | `comment` | string | |
+
+A database that tables or views name without declaring it is created with `Atomic`.
 
 ### `table "database.name"`
 
 | Attribute / block | Type | Notes |
 |---|---|---|
+| `name`, `database` | string, database ref or string | Override the label's parts. |
 | `engine` | identifier or call | Required. `MergeTree`, `ReplacingMergeTree(updated_at)`, `ReplicatedMergeTree("/clickhouse/tables/{uuid}/{shard}", "{replica}")`, `TimeSeries`, `Memory`, ... |
-| `column "name" {}` | block, repeated | |
-| `order_by` | list of column refs/strings, or string | `ORDER BY`. A string is a raw expression (`"tuple()"`). |
-| `primary_key` | list of column refs/strings, or string | Defaults to `order_by`. |
+| `column "name" {}` | block, repeated | In declaration order. |
+| `order_by` | list of column refs/SQL strings, or one SQL string | `ORDER BY`. A string is a raw key expression (`"tuple()"`, `"(a, b)"`). |
+| `primary_key` | same as `order_by` | Defaults to `order_by`. |
 | `partition_by` | string | `PARTITION BY`. |
-| `sample_by` | string | P1 |
-| `ttl` | string | Table TTL expression(s). |
-| `settings` | object | `SETTINGS k = v`. Values are numbers or strings. |
+| `sample_by` | string | `SAMPLE BY`. |
+| `ttl` | string | Table TTL: every element, e.g. `"ts + toIntervalDay(30), ts + toIntervalDay(7) TO DISK 'cold'"`. |
+| `settings` | object | `SETTINGS k = v`. Numbers and bools are written as is, strings become string literals, `sql("...")` is raw. |
 | `index "name" {}` | block | Data-skipping index: `expr` (string, required), `type` (identifier or call, required: `minmax`, `set(1024)`, `bloom_filter(0.01)`, `tokenbf_v1(32768, 3, 0)`, `ngrambf_v1(...)`), `granularity` (number, default 1). |
-| `projection "name" { query = "..." }` | block | P1 |
-| `constraint "name" { check = "..." }` or `{ assume = "..." }` | block | P1 |
+| `projection "name" {}` | block | `query` (string, required), `settings` (object, `WITH SETTINGS`). |
+| `constraint "name" {}` | block | `check = "..."` or `assume = "..."`. |
+| `data`, `tags`, `metrics` | string | `TimeSeries` only: the target clause after `DATA` / `TAGS` / `METRICS` (`"ENGINE = ReplicatedMergeTree ORDER BY (id, timestamp)"`); the server's defaults when absent. |
 | `comment`, `renamed_from`, `depends_on` | | |
 
-Tables with `engine = TimeSeries` declare no columns.
+Tables with `engine = TimeSeries` declare no columns: they and the inner tables are implicit.
 
 #### `column "name"`
 
 | Attribute | Type | Notes |
 |---|---|---|
 | `type` | type | Required. Nullability is part of the type (`Nullable(String)`). |
-| `default` / `materialized` / `alias` / `ephemeral` | literal, `sql()` or string | At most one. `materialized`, `alias` take SQL strings; `default` takes a literal or `sql()`. |
-| `codec` | list of identifiers/calls | `[Delta(8), ZSTD(1)]`. |
+| `default` / `materialized` / `alias` / `ephemeral` | literal, `sql()` or string | At most one. `default` takes a literal (`0`, `"active"`) or `sql("now()")`; `materialized`, `alias` and `ephemeral` take SQL strings (`ephemeral = ""` for a bare `EPHEMERAL`). |
+| `codec` | list of identifiers/calls, or string | `[Delta(8), ZSTD(1)]`; a string may be `"CODEC(...)"` or the list. |
 | `ttl` | string | Column TTL. |
+| `statistics` | list of strings | P2: `STATISTICS(...)`, e.g. `["tdigest"]`. |
+| `settings` | object | P2: column-level `SETTINGS (...)`. |
 | `comment`, `renamed_from` | | |
 
 ### `materialized_view "database.name"`
 
 | Attribute | Type | Notes |
 |---|---|---|
-| `to` | table ref | Required in P0 (`TO` target table). |
+| `to` | table ref or `"database.table"` | `TO` target table. Either `to` or `engine`. |
 | `as` | string | Required. The SELECT. |
+| `engine`, `order_by`, `primary_key`, `partition_by`, `sample_by`, `ttl`, `settings` | | Inner table of a view without `to` (P1); like on tables. |
+| `refresh` | string | Refreshable view: the clause after `REFRESH` (`"EVERY 1 HOUR"`, `"AFTER 30 SECOND APPEND"`). |
+| `sql_security`, `definer` | `DEFINER`/`INVOKER`/`NONE`, string | P1. A definer equal to the user applying the schema is not compared. |
 | `comment`, `depends_on` | | |
 
-P1: `engine` + `order_by` (inner table), `refresh = "EVERY 1 HOUR"`. `view "database.name"` (P1):
-`as`, `comment`. `dictionary` and SQL `function` blocks are P1.
+The column list of a materialized view is derived from its query and not declared.
+
+### `view "database.name"`
+
+`as` (string, required), `sql_security`, `definer`, `comment`, `depends_on`.
+
+### `dictionary "database.name"` (P1)
+
+| Attribute / block | Type | Notes |
+|---|---|---|
+| `attribute "name" {}` | block, repeated | `type` (required), `default` (literal or `sql()`), `expression` (string), `hierarchical`, `bidirectional`, `injective`, `is_object_id` (bools). |
+| `primary_key` | list of attribute refs/strings | Required. |
+| `source` | string | Required. Content of `SOURCE(...)`: `"CLICKHOUSE(TABLE 'events' DB 'app')"`. |
+| `layout` | identifier, call or string | Required. `HASHED` (= `HASHED()`), `FLAT()`, `"COMPLEX_KEY_HASHED(SHARDS 4)"`. |
+| `lifetime` | number or string | `300`, `"MIN 0 MAX 300"`. |
+| `range`, `settings`, `comment`, `depends_on` | | |
+
+### `function "name"` (P1)
+
+SQL user-defined function: `args` (list of parameter names), `body` (string, required): `CREATE
+FUNCTION name AS (args) -> body`.
 
 ### `role "name"`
 
-`storage` (`local_directory`, `replicated`; where the role is stored), `comment`.
+| Attribute | Type | Notes |
+|---|---|---|
+| `storage` | identifier or string | User directory storing the role: `local_directory`, `replicated`. The server's default when absent. Changing it is unsupported (`sync --recreate` drops and recreates the role). |
+| `member_of` | list of role refs or names, or `{ role = ..., admin = bool }` | Role memberships (`GRANT role TO this_role [WITH ADMIN OPTION]`). |
 
-### `user "name"` (P1)
-
-`host`, `default_roles`, `settings`. No secrets.
+ClickHouse roles have no comments. Users are not managed: their authentication cannot be declared,
+so neither users nor their grants and memberships are inspected or planned.
 
 ### `grant`
 
 ```hcl
 grant {
-  privileges = [SELECT, INSERT]        # or [ALL]
-  on         = [table.dialo.events, database.otel]   # or ["*.*"]
-  columns    = ["call_id"]             # optional
-  to         = [role.gateway]
+  privileges = [SELECT, INSERT, "ALTER UPDATE"]   # or [ALL]
+  on         = [table.dialo.events, database.otel]   # or ["*.*"], "db.*", "db.table"
+  columns    = ["call_id"]                     # optional, tables only
+  to         = [role.gateway]                  # role refs or names
   with_grant_option = true
 }
 ```
 
-ClickHouse has no default privileges. Privilege sets are compared after collapsing them with the
-server's privilege hierarchy (`system.privileges`), so `ALL` matches the expanded list the server
-reports.
+Privilege names are ClickHouse's (`ALTER UPDATE`, `dictGet`); identifiers have `_` replaced by
+spaces and are upper-cased unless written in mixed case. ClickHouse has no default privileges.
+Privilege sets are compared after collapsing them with the server's privilege hierarchy
+(`system.privileges`), so `ALL` matches the expanded list the server reports. Only grants to managed
+roles are compared (roles declared in the schema, every role with `manage_roles`). Roles that grants
+name without declaring them are created in scratch servers only.
+
+### `row_policy "name"` (P1)
+
+`on` (table ref or `"database.table"`, required), `using` (SQL condition), `as` (`PERMISSIVE`
+(default) or `RESTRICTIVE`), `to` (role refs/names, or `[ALL]`), `except` (roles, with `ALL`).
+
+### `data`
+
+Not supported for ClickHouse yet (an error).
 
 ### Cluster behaviour
 
-With `cluster = "<name or {macro}>"` in `openmig.toml`, DDL for databases, roles, users and grants,
-and for tables in non-`Replicated` databases, gets `ON CLUSTER`. Tables inside a `Replicated`
-database never get `ON CLUSTER`: the database engine replicates them.
+With `cluster = "<name or {macro}>"` in `openmig.toml`, DDL for databases, functions, roles,
+grants, role memberships and row policies, and for tables and views in non-`Replicated` databases,
+gets `ON CLUSTER`. Tables and views inside a `Replicated` database never get `ON CLUSTER` (the
+database engine replicates them), nor do access entities stored in the `replicated` user directory
+(it replicates itself).
