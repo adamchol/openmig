@@ -1520,6 +1520,8 @@ dependencies = [
  "percent-encoding",
  "pretty_assertions",
  "reqwest",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "tempfile",

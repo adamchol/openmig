@@ -3,6 +3,7 @@
 use openmig_core::{Error, ExecError, ExecErrorKind};
 use percent_encoding::percent_decode_str;
 use serde::de::DeserializeOwned;
+use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
 
@@ -79,6 +80,7 @@ impl HttpClient {
         target.set_query(None);
         let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
+            .tls_backend_preconfigured(tls_config())
             .build()
             .map_err(|e| Error::Connect {
                 target: target.to_string(),
@@ -162,6 +164,26 @@ impl HttpClient {
             })
             .collect()
     }
+}
+
+/// TLS settings for `https` URLs: the platform's trusted roots, loaded leniently. Without any
+/// (minimal container images, build sandboxes) the client still builds and an `https`
+/// connection fails at the handshake with an unknown-issuer error.
+fn tls_config() -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    let loaded = rustls_native_certs::load_native_certs();
+    for error in &loaded.errors {
+        tracing::debug!("loading native certificates: {error}");
+    }
+    roots.add_parsable_certificates(loaded.certs);
+    if roots.is_empty() {
+        tracing::debug!("no trusted root certificates found; https connections will fail");
+    }
+    rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .expect("the ring provider supports the default protocol versions")
+        .with_root_certificates(roots)
+        .with_no_client_auth()
 }
 
 fn transport_error(error: reqwest::Error) -> ExecError {
