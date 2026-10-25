@@ -47,8 +47,8 @@ fn table<'m>(model: &'m Model, database: &str, name: &str) -> &'m Table {
 fn databases_and_defaults() {
     let model = decode_ok(
         r#"
-        database "shop" {
-          engine  = Replicated("/clickhouse/databases/shop", "{shard}", "{replica}")
+        database "main" {
+          engine  = Replicated("/clickhouse/databases/main", "{shard}", "{replica}")
           comment = "main"
         }
         database "plain" {}
@@ -56,14 +56,14 @@ fn databases_and_defaults() {
     );
     assert_eq!(
         model.databases.keys().collect::<Vec<_>>(),
-        ["default", "shop", "plain"]
+        ["default", "main", "plain"]
     );
-    let shop = &model.databases["shop"];
+    let main = &model.databases["main"];
     assert_eq!(
-        shop.engine,
-        "Replicated('/clickhouse/databases/shop', '{shard}', '{replica}')"
+        main.engine,
+        "Replicated('/clickhouse/databases/main', '{shard}', '{replica}')"
     );
-    assert_eq!(shop.comment.as_deref(), Some("main"));
+    assert_eq!(main.comment.as_deref(), Some("main"));
     assert_eq!(model.databases["plain"].engine, "Atomic");
     assert_eq!(model.databases["default"].engine, "Atomic");
 }
@@ -362,8 +362,8 @@ fn views_dictionaries_functions() {
 fn roles_grants_and_row_policies() {
     let model = decode_ok(
         r#"
-        database "shop" {}
-        table "shop.events" {
+        database "main" {}
+        table "main.events" {
           engine = MergeTree
           column "call_id" {
             type = String
@@ -379,18 +379,18 @@ fn roles_grants_and_row_policies() {
         }
         grant {
           privileges = [select, ALTER_UPDATE, dictGet, "show tables"]
-          on         = [database.shop, database.default, "*.*", "other.t"]
+          on         = [database.main, database.default, "*.*", "other.t"]
           to         = [role.reader, "external"]
         }
         grant {
           privileges = [ALL, SELECT]
-          on         = [table.shop.events]
-          columns    = [table.shop.events.column.call_id]
+          on         = [table.main.events]
+          columns    = [table.main.events.column.call_id]
           to         = [role.admin]
           with_grant_option = true
         }
         row_policy "tenant" {
-          on     = table.shop.events
+          on     = table.main.events
           using  = "call_id != ''"
           as     = RESTRICTIVE
           to     = [ALL]
@@ -423,14 +423,14 @@ fn roles_grants_and_row_policies() {
     assert_eq!(
         targets,
         [
-            "admin `shop`.`events`",
+            "admin `main`.`events`",
             "external *.*",
             "external `default`.*",
-            "external `shop`.*",
+            "external `main`.*",
             "external `other`.`t`",
             "reader *.*",
             "reader `default`.*",
-            "reader `shop`.*",
+            "reader `main`.*",
             "reader `other`.`t`",
         ]
     );
@@ -453,7 +453,7 @@ fn roles_grants_and_row_policies() {
         BTreeSet::from(["external".to_owned(), "outside".to_owned()])
     );
     let policy = &model.row_policies[&RowPolicyId {
-        database: "shop".into(),
+        database: "main".into(),
         table: "events".into(),
         name: "tenant".into(),
     }];

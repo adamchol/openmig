@@ -1,11 +1,11 @@
 ---
 source: crates/openmig-hcl/tests/diagnostics.rs
-expression: "render(&[(\"schema/vars.hcl\",\n\"variable \\\"shop_db\\\" {\\n  type = string\\n}\\n\")])"
+expression: "render(&[(\"schema/vars.hcl\", \"variable \\\"shop_db\\\" {\\n  type = string\\n}\\n\")])"
 ---
   × variable `shop_db` has no value
    ╭─[schema/vars.hcl:1:1]
  1 │ variable "shop_db" {
-   · ───────────────────
+   · ──────────────────
  2 │   type = string
    ╰────
   help: give it a `default`, or set it with `--var shop_db=...` or in `[databases.<name>.vars]`
