@@ -41,6 +41,10 @@
 
     checks = forAllSystems (pkgs: {
       inherit (self.packages.${pkgs.stdenv.hostPlatform.system}) openmig;
+      integration = pkgs.callPackage ./nix/integration.nix {
+        openmig = self.packages.${pkgs.stdenv.hostPlatform.system}.openmig;
+        postgresql = pkgs.postgresql_17;
+      };
       migrations-image = self.lib.mkMigrationsImage {
         inherit pkgs;
         name = "openmig-example-migrations";
