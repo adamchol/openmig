@@ -311,5 +311,5 @@ Details (`openmig-scratch`):
   `http://default@127.0.0.1:<http port>/`.
 
 Tests lease servers from process-wide pools in `openmig-testkit` (`postgres()`, `clickhouse()`;
-sizes `OPENMIG_TEST_PG_SERVERS` = 2 and `OPENMIG_TEST_CH_SERVERS` = 1, PostgreSQL major version
+sizes `OPENMIG_TEST_PG_SERVERS` = 2 and `OPENMIG_TEST_CH_SERVERS` = 2, PostgreSQL major version
 `OPENMIG_TEST_PG_VERSION`). A returned server is reset before its next lease.

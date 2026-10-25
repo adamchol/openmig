@@ -2,7 +2,7 @@
 //!
 //! [`postgres`] and [`clickhouse`] hand out exclusive leases. Each pool lazily starts up to
 //! `OPENMIG_TEST_PG_SERVERS` (default 2) PostgreSQL clusters and `OPENMIG_TEST_CH_SERVERS`
-//! (default 1) ClickHouse servers, shared by every test of the test binary and every tokio runtime.
+//! (default 2) ClickHouse servers, shared by every test of the test binary and every tokio runtime.
 //! Dropping a lease returns its server; the next lease of a used server resets it first:
 //!
 //! * PostgreSQL (through `psql`): every database is dropped `WITH (FORCE)` and `postgres` is
@@ -47,7 +47,7 @@ pub async fn postgres() -> PgLease {
 /// When a server cannot be started.
 pub async fn clickhouse() -> ChLease {
     static POOL: OnceLock<Pool<ClickHouseServer>> = OnceLock::new();
-    acquire(POOL.get_or_init(|| Pool::new(pool_size("OPENMIG_TEST_CH_SERVERS", 1)))).await
+    acquire(POOL.get_or_init(|| Pool::new(pool_size("OPENMIG_TEST_CH_SERVERS", 2)))).await
 }
 
 pub fn postgres_spec() -> PgSpec {

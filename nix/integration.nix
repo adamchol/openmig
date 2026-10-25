@@ -25,7 +25,6 @@ rustPlatform.buildRustPackage {
   preCheck = ''
     export HOME=$TMPDIR
     export XDG_CACHE_HOME=$TMPDIR/cache
-    export OPENMIG_TEST_CH_SERVERS=2
   '';
 
   installPhase = ''
