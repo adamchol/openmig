@@ -3,9 +3,9 @@
 //! The output decodes back to the same model ([`crate::decode::decode`]) after normalization
 //! through a scratch server: every value is written in a form the decoder turns into exactly the
 //! inspected text, falling back to a plain string or `sql("...")` when no nicer form
-//! round-trips. Attributes at their defaults are left out. Users, dependencies, materialized
-//! view column lists (derived from the query) and the server version are never written; grants
-//! that HCL cannot express (privileges on parameters, partial revokes) are left out with a warning.
+//! round-trips. Attributes at their defaults are left out. User authentication, dependencies,
+//! materialized view column lists (derived from the query) and the server version are never
+//! written; grants that HCL cannot express (privileges on parameters, partial revokes) are left out with a warning.
 
 mod values;
 
@@ -14,7 +14,7 @@ mod tests;
 
 use crate::model::{
     Column, Database, DefaultKind, Dictionary, Function, Grant, GrantLevel, Grantee,
-    MaterializedView, Model, Role, RowPolicy, RowPolicyId, Table, View,
+    MaterializedView, Model, Role, RowPolicy, RowPolicyId, Table, User, View,
 };
 use crate::settings::ChSettings;
 use openmig_core::{EncodeOptions, EncodedFile, SplitBy};
@@ -56,6 +56,9 @@ pub fn encode(model: &Model, settings: &ChSettings, options: &EncodeOptions) -> 
     let mut sections: Vec<(Section, WBlock)> = Vec::new();
     for role in model.roles.values() {
         sections.push((Section::cluster(Kind::Role), encoder.role(role)));
+    }
+    for user in model.users.values() {
+        sections.push((Section::cluster(Kind::User), encoder.user(user)));
     }
     for function in model.functions.values() {
         sections.push((Section::cluster(Kind::Function), encoder.function(function)));
@@ -112,6 +115,7 @@ pub fn encode(model: &Model, settings: &ChSettings, options: &EncodeOptions) -> 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
     Role,
+    User,
     Function,
     Database,
     Table,
@@ -126,6 +130,7 @@ impl Kind {
     fn file(self) -> &'static str {
         match self {
             Kind::Role => "roles.hcl",
+            Kind::User => "users.hcl",
             Kind::Function => "functions.hcl",
             Kind::Database => "databases.hcl",
             Kind::Table => "tables.hcl",
@@ -323,6 +328,47 @@ impl Encoder<'_> {
             .collect();
         if !memberships.is_empty() {
             block.push_attr("member_of", WExpr::List(memberships));
+        }
+        block
+    }
+
+    /// A user block without `auth`, which the server never shows: the user is adopted as it is.
+    fn user(&self, user: &User) -> WBlock {
+        let mut block = WBlock::new("user", vec![user.name.clone()]);
+        if !user.storage.is_empty() {
+            block.push_attr("storage", ident_or_string(&user.storage));
+        }
+        let fresh = User::new(&user.name);
+        if user.host_ip != fresh.host_ip {
+            block.push_attr(
+                "hosts",
+                WExpr::List(user.host_ip.iter().map(|h| string(h)).collect()),
+            );
+        }
+        let roles: Vec<WExpr> = self
+            .model
+            .role_grants
+            .iter()
+            .filter(|g| g.grantee == Grantee::User(user.name.clone()))
+            .map(|g| self.role_expr(&g.role))
+            .collect();
+        if !roles.is_empty() {
+            block.push_attr("roles", WExpr::List(roles));
+        }
+        if user.default_roles != fresh.default_roles {
+            let mut items: Vec<WExpr> = user
+                .default_roles
+                .names
+                .iter()
+                .map(|r| self.role_expr(r))
+                .collect();
+            if user.default_roles.all {
+                items.insert(0, WExpr::Ident("ALL".into()));
+            }
+            block.push_attr("default_roles", WExpr::List(items));
+        }
+        if let Some(db) = &user.default_database {
+            block.push_attr("default_database", string(db));
         }
         block
     }
@@ -674,10 +720,11 @@ impl Encoder<'_> {
                 WExpr::List(grant.columns.iter().map(|c| string(c)).collect()),
             );
         }
-        block.push_attr(
-            "to",
-            WExpr::List(vec![self.role_expr(grant.grantee.name())]),
-        );
+        let grantee = match &grant.grantee {
+            Grantee::Role(name) => self.role_expr(name),
+            Grantee::User(name) => WExpr::Ref(Address::new("user", vec![name.clone()])),
+        };
+        block.push_attr("to", WExpr::List(vec![grantee]));
         if grant.grant_option {
             block.push_attr("with_grant_option", WExpr::Bool(true));
         }

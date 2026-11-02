@@ -83,16 +83,32 @@ impl Engine for ClickHouseEngine {
         roles.chain(users).chain(functions).collect()
     }
 
+    fn complete_normalized(normalized: &mut Model, decoded: &Model) {
+        for (name, user) in &mut normalized.users {
+            if let Some(declared) = decoded.users.get(name) {
+                user.auth = declared.auth.clone();
+            }
+        }
+    }
+
     fn scratch_prelude(model: &Model) -> ScratchPrelude {
         let external: Vec<&String> = model
             .external_roles
             .iter()
             .filter(|n| !model.roles.contains_key(*n))
             .collect();
+        // Users declared without `auth` are created by someone else; they are OpenMig's all the
+        // same, so not hidden.
+        let users = model
+            .users
+            .values()
+            .filter(|u| u.auth == model::UserAuth::External)
+            .map(|u| format!("CREATE USER IF NOT EXISTS {}", plan::sql::q(&u.name)));
         ScratchPrelude {
             statements: external
                 .iter()
                 .map(|n| format!("CREATE ROLE IF NOT EXISTS {}", plan::sql::q(n)))
+                .chain(users)
                 .collect(),
             hidden: external
                 .iter()

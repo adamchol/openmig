@@ -12,10 +12,12 @@ pub struct Role {
     pub storage: String,
 }
 
-/// A user stored in a SQL-managed user directory. Authentication is never part of the model.
+/// A user stored in a SQL-managed user directory.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct User {
     pub name: String,
+    /// How a declared user is created. Never inspected, so never compared.
+    pub auth: UserAuth,
     /// See [`Role::storage`].
     pub storage: String,
     /// `HOST IP` patterns (`::/0` means any host). Sorted, like the other host lists.
@@ -31,6 +33,49 @@ pub struct User {
     pub default_database: Option<String>,
     /// `GRANTEES`: who this user may grant its privileges to.
     pub grantees: RoleSet,
+}
+
+/// How a user is authenticated, as far as OpenMig knows.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum UserAuth {
+    /// Inspected: the server never shows authentication.
+    #[default]
+    Unknown,
+    /// Declared with `auth`: the `IDENTIFIED ...` or `NOT IDENTIFIED` clause it is created with.
+    Declared(String),
+    /// Declared without `auth`: someone else creates the user; OpenMig only manages its
+    /// attributes, roles and grants.
+    External,
+}
+
+impl User {
+    /// A user as `CREATE USER` without options makes it.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            host_ip: vec!["::/0".to_owned()],
+            default_roles: RoleSet {
+                all: true,
+                ..RoleSet::default()
+            },
+            grantees: RoleSet {
+                all: true,
+                ..RoleSet::default()
+            },
+            ..Self::default()
+        }
+    }
+
+    /// Everything but `storage` and `auth` equal.
+    pub fn same_attributes(&self, other: &User) -> bool {
+        self.host_ip == other.host_ip
+            && self.host_names == other.host_names
+            && self.host_names_regexp == other.host_names_regexp
+            && self.host_names_like == other.host_names_like
+            && self.default_roles == other.default_roles
+            && self.default_database == other.default_database
+            && self.grantees == other.grantees
+    }
 }
 
 /// A set of roles or users as in `DEFAULT ROLE`, `GRANTEES` and `TO` of row policies:

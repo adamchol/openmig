@@ -122,7 +122,12 @@ impl Planner<'_> {
                 .get(name)
                 .or_else(|| self.current.roles.get(name))
                 .map(|r| r.storage.as_str()),
-            Grantee::User(name) => self.current.users.get(name).map(|u| u.storage.as_str()),
+            Grantee::User(name) => self
+                .desired
+                .users
+                .get(name)
+                .or_else(|| self.current.users.get(name))
+                .map(|u| u.storage.as_str()),
         };
         self.storage_cluster(storage.unwrap_or_default())
     }
@@ -376,6 +381,30 @@ impl Planner<'_> {
                     vec![stmt(sql, format!("Create role {}", dq(&role.name)))],
                 )
             }
+            Change::CreateUser(user) => (
+                Effect::Create,
+                vec![stmt(
+                    sql::create_user(user, &self.storage_cluster(&user.storage)),
+                    format!("Create user {}", dq(&user.name)),
+                )],
+            ),
+            Change::AlterUser(user) => (
+                Effect::Alter,
+                vec![stmt(
+                    sql::alter_user(user, &self.storage_cluster(&user.storage)),
+                    format!(
+                        "Set hosts, default roles and default database of user {}",
+                        dq(&user.name)
+                    ),
+                )],
+            ),
+            Change::DropUser(user) => (
+                Effect::Drop,
+                vec![stmt(
+                    sql::drop_user(user, &self.storage_cluster(&user.storage)),
+                    format!("Drop user {}", dq(&user.name)),
+                )],
+            ),
             Change::DropRole { role, .. } => (
                 Effect::Drop,
                 vec![stmt(
@@ -588,6 +617,8 @@ fn priority(change: &Change) -> (u8, u16) {
         Change::Revoke(_) | Change::RevokeGrantOption(_) => (0, 0),
         Change::RevokeRole(_) | Change::RevokeAdminOption(_) => (0, 1),
         Change::CreateRole(_) => (1, 0),
+        Change::CreateUser(_) => (1, 0),
+        Change::AlterUser(_) => (1, 12),
         Change::CreateDatabase(_) | Change::CommentDatabase { .. } => (1, 1),
         Change::CreateFunction { .. } => (1, 2),
         Change::CreateTable { .. } | Change::RenameTable { .. } => (1, 3),
@@ -610,6 +641,7 @@ fn priority(change: &Change) -> (u8, u16) {
         Change::DropFunction(_) => (2, 6),
         Change::DropDatabase(_) => (2, 7),
         Change::DropRole { .. } => (2, 8),
+        Change::DropUser(_) => (2, 9),
     }
 }
 

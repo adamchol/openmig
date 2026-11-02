@@ -109,6 +109,7 @@ impl<'a> Decoder<'a> {
         for block in &doc.blocks {
             match block.kind.as_str() {
                 "role" => self.role(block),
+                "user" => self.user(block),
                 "function" => self.function(block),
                 _ => {}
             }
@@ -169,7 +170,10 @@ impl<'a> Decoder<'a> {
             let Some(address) = &block.address else {
                 continue;
             };
-            if matches!(block.kind.as_str(), "database" | "role" | "function") {
+            if matches!(
+                block.kind.as_str(),
+                "database" | "role" | "user" | "function"
+            ) {
                 let name = string_attr(block, "name").unwrap_or_else(|| address.labels[0].clone());
                 self.symbols.insert(
                     address.clone(),
@@ -342,6 +346,7 @@ impl<'a> Decoder<'a> {
         let kind = match address.kind.as_str() {
             "database" => return Some(ObjectRef::new(ObjectKind::Database, [&symbol.name])),
             "role" => return Some(ObjectRef::new(ObjectKind::Role, [&symbol.name])),
+            "user" => return Some(ObjectRef::new(ObjectKind::User, [&symbol.name])),
             "function" => return Some(ObjectRef::new(ObjectKind::Function, [&symbol.name])),
             "table" => ObjectKind::Table,
             "view" => ObjectKind::View,

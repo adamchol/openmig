@@ -13,6 +13,10 @@ use std::process::Command;
 
 const FOREIGN: &str = include_str!("scoped/postgres.sql");
 
+/// Some tests lease two servers; running one at a time keeps them from each holding one and
+/// waiting for the pool's last.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct Project {
     dir: tempfile::TempDir,
 }
@@ -228,6 +232,7 @@ fn assert_untouched(plan: &str) {
 /// Observation 1: scoping to `app` made every command fail with `CREATE SCHEMA "public"`.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_sync_does_not_recreate_public() {
+    let _serial = SERIAL.lock().await;
     let lease = openmig_testkit::postgres().await;
     let url = host(&lease).await;
     for options in ["default_schema = \"app\"\n", ""] {
@@ -246,6 +251,7 @@ async fn scoped_sync_does_not_recreate_public() {
 /// already existed.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_generate_deploy_and_drift_leave_the_host_alone() {
+    let _serial = SERIAL.lock().await;
     let lease = openmig_testkit::postgres().await;
     let url = host(&lease).await;
     let project = Project::new(&url, "default_schema = \"app\"\n");
@@ -294,6 +300,7 @@ async fn scoped_generate_deploy_and_drift_leave_the_host_alone() {
 /// Observation 3: the project's own roles with their attributes, next to the host's roles.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_roles_with_attributes_and_grants() {
+    let _serial = SERIAL.lock().await;
     let lease = openmig_testkit::postgres().await;
     let url = host(&lease).await;
     let project = Project::new(&url, "default_schema = \"app\"\n");
@@ -325,6 +332,7 @@ async fn scoped_roles_with_attributes_and_grants() {
 /// Observation 4: a publication the CDC reader replicates `app.grants` through.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_publication() {
+    let _serial = SERIAL.lock().await;
     let lease = openmig_testkit::postgres().await;
     let url = host(&lease).await;
     let project = Project::new(&url, "default_schema = \"app\"\n");
@@ -381,6 +389,7 @@ async fn scoped_publication() {
 /// the migrate crate's tests.
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_generate_leaves_the_migrations_unchanged() {
+    let _serial = SERIAL.lock().await;
     let lease = openmig_testkit::postgres().await;
     let url = host(&lease).await;
     let project = Project::new(&url, "default_schema = \"app\"\n");

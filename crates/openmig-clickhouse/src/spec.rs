@@ -24,6 +24,7 @@ const BLOCKS: &[BlockSpec] = &[
         .nested(DICTIONARY),
     BlockSpec::new("function", LabelSpec::One).referenceable(),
     BlockSpec::new("role", LabelSpec::One).referenceable(),
+    BlockSpec::new("user", LabelSpec::One).referenceable(),
     BlockSpec::new("grant", LabelSpec::None),
     BlockSpec::new("row_policy", LabelSpec::One),
     BlockSpec::new("data", LabelSpec::Qualified)

@@ -13,7 +13,7 @@ use crate::ClickHouseEngine;
 use crate::model::{
     Column, ColumnDefault, Constraint, Database, DefaultKind, Dictionary, Function, Grant, Grantee,
     Index, MaterializedView, Model, Projection, QualifiedName, Role, RoleGrant, RowPolicy,
-    RowPolicyId, Table, View,
+    RowPolicyId, Table, User, UserAuth, View,
 };
 use openmig_core::{ChangeInfo, DiffContext, Error, ObjectKind, ObjectRef, PlanMode};
 use std::collections::{BTreeMap, BTreeSet};
@@ -110,6 +110,11 @@ pub enum Change {
         role: Role,
         recreate: bool,
     },
+    /// `CREATE USER` of a user declared with `auth` (or of any user in a scratch server).
+    CreateUser(User),
+    /// `ALTER USER` setting hosts, default roles, default database and grantees.
+    AlterUser(User),
+    DropUser(User),
     Grant(Grant),
     Revoke(Grant),
     /// `REVOKE GRANT OPTION FOR`: the privileges stay.
@@ -238,6 +243,9 @@ impl ChangeInfo for Change {
             Change::CreateRole(role) | Change::DropRole { role, .. } => {
                 ObjectRef::new(K::Role, [role.name.as_str()])
             }
+            Change::CreateUser(user) | Change::AlterUser(user) | Change::DropUser(user) => {
+                ObjectRef::new(K::User, [user.name.as_str()])
+            }
             Change::Grant(g) | Change::Revoke(g) | Change::RevokeGrantOption(g) => g.object_ref(),
             Change::GrantRole(g) | Change::RevokeRole(g) | Change::RevokeAdminOption(g) => {
                 g.grantee.object_ref()
@@ -291,6 +299,9 @@ impl ChangeInfo for Change {
             Change::DropFunction(_) => format!("drop function {what}"),
             Change::CreateRole(_) => format!("create role {what}"),
             Change::DropRole { .. } => format!("drop role {what}"),
+            Change::CreateUser(_) => format!("create user {what}"),
+            Change::AlterUser(_) => format!("alter user {what}"),
+            Change::DropUser(_) => format!("drop user {what}"),
             Change::Grant(g) => format!(
                 "grant {} on {} to {}",
                 privilege_list(g),
@@ -416,6 +427,7 @@ pub fn diff(
     apply_renames(&mut current, ctx, &mut changes, &mut renamed_columns);
 
     let recreated_roles = roles(&current, desired, ctx, &mut changes)?;
+    users(&current, desired, ctx, &mut changes)?;
     functions(&current, desired, &mut changes);
     databases(&current, desired, ctx, &mut changes, &mut renamed_columns)?;
     grants(&current, desired, &recreated_roles, &mut changes);
@@ -529,6 +541,43 @@ fn roles(
         }
     }
     Ok(recreated)
+}
+
+fn users(
+    current: &Model,
+    desired: &Model,
+    ctx: &DiffContext<'_, ClickHouseEngine>,
+    changes: &mut Vec<Change>,
+) -> Result<(), Error> {
+    for (name, user) in &current.users {
+        if !desired.users.contains_key(name) {
+            changes.push(Change::DropUser(user.clone()));
+        }
+    }
+    for (name, want) in &desired.users {
+        match current.users.get(name) {
+            None => {
+                let declared = matches!(want.auth, UserAuth::Declared(_));
+                if !declared && ctx.mode != PlanMode::Scratch {
+                    return Err(unsupported(
+                        ObjectRef::new(ObjectKind::User, [name.as_str()]),
+                        "the user does not exist and the schema does not declare its `auth`: \
+                         create it on the server, or declare `auth`"
+                            .to_owned(),
+                    ));
+                }
+                changes.push(Change::CreateUser(want.clone()));
+                if !want.same_attributes(&User::new(name)) {
+                    changes.push(Change::AlterUser(want.clone()));
+                }
+            }
+            Some(have) if !have.same_attributes(want) => {
+                changes.push(Change::AlterUser(want.clone()));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
 }
 
 fn functions(current: &Model, desired: &Model, changes: &mut Vec<Change>) {

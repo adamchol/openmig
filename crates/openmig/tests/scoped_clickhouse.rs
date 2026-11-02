@@ -12,6 +12,10 @@ use std::path::Path;
 
 const FOREIGN: &str = include_str!("scoped/clickhouse.sql");
 
+/// Some tests lease two servers; running one at a time keeps them from each holding one and
+/// waiting for the pool's last.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct Project {
     dir: tempfile::TempDir,
 }
@@ -196,6 +200,7 @@ fn assert_untouched(plan: &str) {
 /// it into migrations, so `generate`, `deploy` and `status --drift` failed with `UNKNOWN_ROLE`.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_generate_deploy_and_drift_leave_the_host_alone() {
+    let _serial = SERIAL.lock().await;
     let lease = host().await;
     let project = Project::new(lease.url());
     project.schema(APP);
@@ -234,6 +239,7 @@ async fn scoped_generate_deploy_and_drift_leave_the_host_alone() {
 /// The project's ClickHouse access: a user it creates and a user the host provides, with grants.
 #[tokio::test(flavor = "multi_thread")]
 async fn scoped_users_and_their_grants() {
+    let _serial = SERIAL.lock().await;
     let lease = host().await;
     query(
         &lease,
@@ -296,6 +302,7 @@ async fn scoped_users_and_their_grants() {
 /// report's case, which verifies once roles are managed).
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_generate_leaves_the_migrations_unchanged() {
+    let _serial = SERIAL.lock().await;
     let lease = host().await;
     let project = Project::new(lease.url());
     project.schema(APP);

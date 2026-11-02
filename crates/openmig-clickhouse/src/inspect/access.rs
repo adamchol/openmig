@@ -3,6 +3,7 @@
 use super::{Snapshot, list, rows};
 use crate::model::{
     Grant, GrantLevel, Grantee, Model, Role, RoleGrant, RoleSet, RowPolicy, RowPolicyId, User,
+    UserAuth,
 };
 use crate::privileges::PrivilegeCatalog;
 use crate::session::ChSession;
@@ -189,6 +190,7 @@ pub(super) fn assemble(model: &mut Model, snapshot: &Snapshot, catalog: &Privile
         model.users.insert(
             user.name.clone(),
             User {
+                auth: UserAuth::Unknown,
                 name: user.name.clone(),
                 storage: user.storage.clone(),
                 host_ip: sorted(user.host_ip.clone()),

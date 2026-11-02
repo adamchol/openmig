@@ -194,7 +194,9 @@ pub async fn normalize<E: Engine>(
     let changes = E::diff(&pristine, &model, &dctx)?;
     let plan = E::plan(changes, &pristine, &model, &dctx)?;
     apply_with_retry::<E>(session, &plan, desired).await?;
-    session.inspect(scope).await
+    let mut normalized = session.inspect(scope).await?;
+    E::complete_normalized(&mut normalized, &desired.model);
+    Ok(normalized)
 }
 
 /// Apply a plan built from decoded HCL. Statements that fail because an object they reference

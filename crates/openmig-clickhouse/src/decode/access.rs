@@ -2,7 +2,9 @@
 
 use super::Decoder;
 use super::values::expression;
-use crate::model::{Grant, Grantee, Role, RoleGrant, RoleSet, RowPolicy, RowPolicyId};
+use crate::model::{
+    Grant, Grantee, Role, RoleGrant, RoleSet, RowPolicy, RowPolicyId, User, UserAuth,
+};
 use openmig_core::{ObjectKind, ObjectRef};
 use openmig_hcl::{Block, BlockDecoder, Value};
 use std::collections::BTreeSet;
@@ -48,6 +50,80 @@ impl<'a> Decoder<'a> {
         self.model
             .roles
             .insert(name.clone(), Role { name, storage });
+    }
+
+    pub(super) fn user(&mut self, block: &'a Block) {
+        let mut dec = self.decoder(block);
+        let Some(name) = self.block_name(&mut dec) else {
+            dec.finish();
+            return;
+        };
+        if !self.declare(
+            ObjectRef::new(ObjectKind::User, [name.as_str()]),
+            block.header_span,
+        ) {
+            dec.finish();
+            return;
+        }
+        let mut user = User::new(&name);
+        user.storage = match dec.attr("storage").map(|a| &a.value) {
+            Some(Value::Ident(s) | Value::String(s)) => s.clone(),
+            _ => String::new(),
+        };
+        user.auth = match dec.attr("auth").filter(|a| !matches!(a.value, Value::Null)) {
+            None => UserAuth::External,
+            Some(a) => match identified(&a.value) {
+                Ok(clause) => UserAuth::Declared(clause),
+                Err(message) => {
+                    self.error(a.value_span, message);
+                    UserAuth::External
+                }
+            },
+        };
+        if let Some(mut hosts) = dec.opt::<Vec<String>>("hosts") {
+            hosts.sort();
+            hosts.dedup();
+            user.host_ip = hosts;
+        }
+        if let Some((all, names)) = self.roles(&mut dec, "default_roles", true) {
+            user.default_roles = RoleSet {
+                all,
+                names: if all { Vec::new() } else { names },
+                except: Vec::new(),
+            };
+        }
+        if let Some((_, roles)) = self.roles(&mut dec, "roles", false) {
+            for role in roles {
+                self.model.role_grants.push(RoleGrant {
+                    grantee: Grantee::User(name.clone()),
+                    role,
+                    admin_option: false,
+                });
+            }
+        }
+        user.default_database = match dec
+            .attr("default_database")
+            .map(|a| (&a.value, a.value_span))
+        {
+            None | Some((Value::Null, _)) => None,
+            Some((Value::Ref(r), _)) if r.kind == "database" => Some(
+                self.symbol(r)
+                    .map_or_else(|| r.leaf_label().to_owned(), |s| s.name.clone()),
+            ),
+            Some((Value::String(s), _)) if !s.is_empty() => Some(s.clone()),
+            Some((other, span)) => {
+                self.error(
+                    span,
+                    format!(
+                        "`default_database` must be a database reference, found {}",
+                        other.type_name()
+                    ),
+                );
+                None
+            }
+        };
+        dec.finish();
+        self.model.users.insert(name, user);
     }
 
     /// `member_of = [role.a, { role = role.b, admin = true }]`: role memberships of `member`.
@@ -162,13 +238,47 @@ impl<'a> Decoder<'a> {
         Some((all, out))
     }
 
+    /// Roles and users of `attr` (`role.r`, `user.u`, or role names).
+    fn grantees(&mut self, dec: &mut BlockDecoder<'_>, attr: &str) -> Option<Vec<Grantee>> {
+        let a = dec.attr(attr).filter(|a| !matches!(a.value, Value::Null))?;
+        let Value::List(items) = &a.value else {
+            self.error(
+                a.value_span,
+                format!(
+                    "`{attr}` must be a list of roles and users, found {}",
+                    a.value.type_name()
+                ),
+            );
+            return None;
+        };
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                Value::Ref(r) if r.kind == "user" && r.nested.is_empty() => match self.symbol(r) {
+                    Some(s) => out.push(Grantee::User(s.name.clone())),
+                    None => self.error(a.value_span, format!("unknown user `{r}`")),
+                },
+                other => match self.role_name(other) {
+                    Ok(name) => {
+                        self.mentioned_roles.insert(name.clone());
+                        out.push(Grantee::Role(name));
+                    }
+                    Err(message) => self.error(a.value_span, message),
+                },
+            }
+        }
+        out.sort();
+        out.dedup();
+        Some(out)
+    }
+
     pub(super) fn grant(&mut self, block: &'a Block) {
         let mut dec = self.decoder(block);
         let privileges = self.privileges(&mut dec);
         let targets = self.targets(&mut dec);
         let columns = self.grant_columns(&mut dec);
-        let grantees = match self.roles(&mut dec, "to", false) {
-            Some((_, roles)) if !roles.is_empty() => roles,
+        let grantees = match self.grantees(&mut dec, "to") {
+            Some(grantees) if !grantees.is_empty() => grantees,
             Some(_) => {
                 self.error(block.header_span, "`to` cannot be empty");
                 Vec::new()
@@ -198,7 +308,7 @@ impl<'a> Decoder<'a> {
                     Target::Table(d, t) => (Some(d.clone()), Some(t.clone())),
                 };
                 let grant = Grant {
-                    grantee: Grantee::Role(grantee.clone()),
+                    grantee: grantee.clone(),
                     database,
                     table,
                     parameter: None,
@@ -463,5 +573,43 @@ fn privilege_name(text: &str) -> String {
 fn collapse_all(privileges: &mut BTreeSet<String>) {
     if privileges.contains("ALL") {
         privileges.retain(|p| p == "ALL");
+    }
+}
+
+/// The `IDENTIFIED ...` clause of `auth`: `sha256_hash("<hex>")`, `double_sha1_hash("<hex>")`,
+/// `bcrypt_hash("<hash>")`, `ssl_certificate("cn", ...)`, `no_password` or `sql("...")`.
+fn identified(value: &Value) -> Result<String, String> {
+    let quoted = |args: &[Value]| -> Result<Vec<String>, String> {
+        args.iter()
+            .map(|a| match a {
+                Value::String(s) => Ok(crate::plan::sql::lit(s)),
+                other => Err(format!(
+                    "`auth` arguments must be strings, found {}",
+                    other.type_name()
+                )),
+            })
+            .collect()
+    };
+    match value {
+        Value::Ident(w) if w.eq_ignore_ascii_case("no_password") => {
+            Ok("IDENTIFIED WITH no_password".to_owned())
+        }
+        Value::Call { name, args }
+            if matches!(
+                name.as_str(),
+                "sha256_hash" | "double_sha1_hash" | "bcrypt_hash"
+            ) && args.len() == 1 =>
+        {
+            Ok(format!("IDENTIFIED WITH {name} BY {}", quoted(args)?[0]))
+        }
+        Value::Call { name, args } if name == "ssl_certificate" && !args.is_empty() => Ok(
+            format!("IDENTIFIED WITH ssl_certificate CN {}", quoted(args)?.join(", ")),
+        ),
+        Value::Sql(sql) => Ok(format!("IDENTIFIED {sql}")),
+        _ => Err(
+            "`auth` must be sha256_hash(\"...\"), double_sha1_hash(\"...\"), bcrypt_hash(\"...\"), \
+             ssl_certificate(\"cn\"), no_password or sql(\"...\")"
+                .to_owned(),
+        ),
     }
 }

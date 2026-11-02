@@ -16,7 +16,7 @@ mod objects;
 mod table;
 
 pub use access::{
-    Grant, GrantLevel, Grantee, Role, RoleGrant, RoleSet, RowPolicy, RowPolicyId, User,
+    Grant, GrantLevel, Grantee, Role, RoleGrant, RoleSet, RowPolicy, RowPolicyId, User, UserAuth,
 };
 pub use objects::Object;
 pub use table::{
@@ -67,11 +67,10 @@ pub struct Model {
     pub databases: BTreeMap<String, Database>,
     /// SQL user-defined functions (`CREATE FUNCTION`).
     pub functions: BTreeMap<String, Function>,
-    /// Roles stored in SQL-managed user directories. Empty unless roles are managed
-    /// (`Scope::manage_roles`).
+    /// Roles stored in SQL-managed user directories: the owned ones, or all with
+    /// `Scope::manage_roles`.
     pub roles: BTreeMap<String, Role>,
-    /// Users stored in SQL-managed user directories, without the connecting user and `default`.
-    /// Read by inspection but removed by [`crate::restrict::restrict`]: users are not managed.
+    /// Owned users stored in SQL-managed user directories, never the connecting user or `default`.
     pub users: BTreeMap<String, User>,
     /// Privilege grants of managed grantees, in canonical form: one entry per grantee, object,
     /// grant option and set of columns, privileges collapsed with the server's privilege

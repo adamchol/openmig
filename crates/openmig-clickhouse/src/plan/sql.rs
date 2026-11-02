@@ -3,7 +3,8 @@
 use crate::diff::{ColumnChange, TableOp};
 use crate::model::{
     Column, Constraint, DefaultKind, Dictionary, Function, Grant, Grantee, Index, InnerTable,
-    MaterializedView, Projection, RoleGrant, RoleSet, RowPolicy, RowPolicyId, Table, View,
+    MaterializedView, Projection, RoleGrant, RoleSet, RowPolicy, RowPolicyId, Table, User,
+    UserAuth, View,
 };
 use openmig_core::Dialect;
 use openmig_core::sql::{quote_ident, quote_literal};
@@ -470,6 +471,58 @@ fn role_set(set: &RoleSet) -> String {
     } else {
         names(&set.names)
     }
+}
+
+/// `CREATE USER IF NOT EXISTS` with the declared authentication; the other attributes are set
+/// with [`alter_user`] once the user's roles are granted. A user declared without `auth` is only
+/// created in scratch servers, without authentication.
+pub fn create_user(u: &User, on_cluster: &str) -> String {
+    let mut out = format!("CREATE USER IF NOT EXISTS {}{on_cluster}", q(&u.name));
+    if let UserAuth::Declared(clause) = &u.auth {
+        out.push(' ');
+        out.push_str(clause);
+    }
+    if !u.storage.is_empty() {
+        out.push_str(&format!(" IN {}", q(&u.storage)));
+    }
+    out
+}
+
+/// `ALTER USER` setting every attribute OpenMig manages.
+pub fn alter_user(u: &User, on_cluster: &str) -> String {
+    let mut hosts: Vec<String> = Vec::new();
+    if u.host_ip.iter().any(|h| h == "::/0") {
+        hosts.push("ANY".to_owned());
+    } else {
+        hosts.extend(u.host_ip.iter().map(|h| format!("IP {}", lit(h))));
+        hosts.extend(u.host_names.iter().map(|h| format!("NAME {}", lit(h))));
+        hosts.extend(
+            u.host_names_regexp
+                .iter()
+                .map(|h| format!("REGEXP {}", lit(h))),
+        );
+        hosts.extend(u.host_names_like.iter().map(|h| format!("LIKE {}", lit(h))));
+    }
+    let hosts = if hosts.is_empty() {
+        "NONE".to_owned()
+    } else {
+        hosts.join(", ")
+    };
+    let database = u
+        .default_database
+        .as_deref()
+        .map_or_else(|| "NONE".to_owned(), q);
+    let grantees = role_set(&u.grantees).replacen("ALL", "ANY", 1);
+    format!(
+        "ALTER USER {}{on_cluster} HOST {hosts} DEFAULT ROLE {} DEFAULT DATABASE {database} \
+         GRANTEES {grantees}",
+        q(&u.name),
+        role_set(&u.default_roles)
+    )
+}
+
+pub fn drop_user(u: &User, on_cluster: &str) -> String {
+    format!("DROP USER IF EXISTS {}{on_cluster}", q(&u.name))
 }
 
 pub fn create_row_policy(id: &RowPolicyId, p: &RowPolicy, on_cluster: &str) -> String {

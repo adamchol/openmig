@@ -302,6 +302,12 @@ pub trait Engine: Sized + Send + Sync + 'static {
     /// matches what inspection returns).
     fn restrict(model: &mut Self::Model, scope: &Scope);
 
+    /// Copy what inspection cannot read back (ClickHouse user authentication) from a decoded
+    /// model into its normalized form, which plans create objects from.
+    fn complete_normalized(normalized: &mut Self::Model, decoded: &Self::Model) {
+        let _ = (normalized, decoded);
+    }
+
     /// The schema-less objects a model holds (for [`Scope::owned`]).
     fn owned(model: &Self::Model) -> Vec<ObjectRef>;
 

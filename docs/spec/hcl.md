@@ -565,8 +565,24 @@ FUNCTION name AS (args) -> body`.
 | `storage` | identifier or string | User directory storing the role: `local_directory`, `replicated`. The server's default when absent. Changing it is unsupported (`sync --recreate` drops and recreates the role). |
 | `member_of` | list of role refs or names, or `{ role = ..., admin = bool }` | Role memberships (`GRANT role TO this_role [WITH ADMIN OPTION]`). |
 
-ClickHouse roles have no comments. Users are not managed: their authentication cannot be declared,
-so neither users nor their grants and memberships are inspected or planned.
+ClickHouse roles have no comments.
+
+### `user "name"`
+
+| Attribute | Type | Notes |
+|---|---|---|
+| `auth` | call | How the user is created: `sha256_hash("<hex>")`, `double_sha1_hash("<hex>")`, `bcrypt_hash("<hash>")`, `ssl_certificate("cn", ...)`, `no_password` or `sql("IDENTIFIED ...")`. Without `auth` the user is someone else's to create: OpenMig never creates or drops it and fails (`sync`, `status --drift`) when it is missing. |
+| `storage` | identifier or string | As for roles. |
+| `hosts` | list of strings | `HOST IP` patterns; any host when absent. |
+| `roles` | list of role refs or names | Role memberships (`GRANT role TO user`). |
+| `default_roles` | list of role refs or names, `ALL` | `DEFAULT ROLE`; `ALL` when absent. |
+| `default_database` | database ref or string | `DEFAULT DATABASE`. |
+
+The server never shows a user's authentication, so `auth` is used only to create the user and is
+never compared. Pass the hash in a variable (`auth = sha256_hash(var.sink_password_sha256)`) to
+keep it out of the schema files; it is still written into the generated migration file. Users are
+owned only when declared, even with `manage_roles = true`. `openmig inspect` writes users without
+`auth`.
 
 ### `grant`
 
@@ -575,7 +591,7 @@ grant {
   privileges = [SELECT, INSERT, "ALTER UPDATE"]   # or [ALL]
   on         = [table.shop.events, database.otel]   # or ["*.*"], "db.*", "db.table"
   columns    = ["call_id"]                     # optional, tables only
-  to         = [role.gateway]                  # role refs or names
+  to         = [role.gateway, user.sink]       # role and user refs, or role names
   with_grant_option = true
 }
 ```
@@ -583,8 +599,8 @@ grant {
 Privilege names are ClickHouse's (`ALTER UPDATE`, `dictGet`); identifiers have `_` replaced by
 spaces and are upper-cased unless written in mixed case. ClickHouse has no default privileges.
 Privilege sets are compared after collapsing them with the server's privilege hierarchy
-(`system.privileges`), so `ALL` matches the expanded list the server reports. Only grants to managed
-roles are compared (roles declared in the schema, every role with `manage_roles`). Roles that grants
+(`system.privileges`), so `ALL` matches the expanded list the server reports. Only grants to owned roles
+and users are compared (`config.md`). Roles that grants
 name without declaring them are created in scratch servers only.
 
 ### `row_policy "name"` (P1)

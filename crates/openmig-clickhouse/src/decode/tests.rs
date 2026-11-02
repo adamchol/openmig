@@ -596,3 +596,54 @@ fn errors() {
         assert!(err.contains(expected), "expected `{expected}` in:\n{err}");
     }
 }
+
+#[test]
+fn users_and_grants_to_them() {
+    let m = decode_ok(
+        r#"
+variable "hash" {
+  default = "abc"
+}
+role "reader" {}
+user "svc" {
+  auth          = sha256_hash(var.hash)
+  roles         = [role.reader]
+  default_roles = [role.reader]
+}
+user "sink" {}
+grant {
+  privileges = [INSERT]
+  on         = ["app.*"]
+  to         = [user.sink, role.reader]
+}
+"#,
+    );
+    assert_eq!(
+        m.users["svc"].auth,
+        UserAuth::Declared("IDENTIFIED WITH sha256_hash BY 'abc'".into())
+    );
+    assert_eq!(m.users["svc"].default_roles.names, ["reader"]);
+    assert_eq!(m.users["sink"].auth, UserAuth::External);
+    assert_eq!(m.users["sink"], {
+        let mut u = User::new("sink");
+        u.auth = UserAuth::External;
+        u
+    });
+    assert_eq!(
+        m.role_grants,
+        [RoleGrant {
+            grantee: Grantee::User("svc".into()),
+            role: "reader".into(),
+            admin_option: false,
+        }]
+    );
+    let grantees: Vec<&Grantee> = m.grants.iter().map(|g| &g.grantee).collect();
+    assert_eq!(
+        grantees,
+        [
+            &Grantee::Role("reader".into()),
+            &Grantee::User("sink".into())
+        ]
+    );
+    assert!(decode_err("user \"u\" {\n  auth = \"secret\"\n}\n").contains("`auth` must be"));
+}
