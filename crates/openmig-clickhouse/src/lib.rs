@@ -30,8 +30,9 @@ pub use session::{ChSession, MIN_SERVER_VERSION};
 pub use settings::{ChSettings, SYSTEM_DATABASES};
 
 use openmig_core::{
-    DataTable, Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error, Plan,
-    RenameCandidate, RenameHints, RenameSet, Scope, SessionPurpose,
+    DataTable, Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error,
+    ObjectKind, ObjectRef, Plan, RenameCandidate, RenameHints, RenameSet, Scope, ScratchPrelude,
+    SessionPurpose,
 };
 use openmig_hcl::{Document, SchemaSpec};
 use std::time::Duration;
@@ -66,8 +67,38 @@ impl Engine for ClickHouseEngine {
         restrict::restrict(model, scope);
     }
 
-    fn declared_roles(model: &Model) -> Vec<String> {
-        model.roles.keys().cloned().collect()
+    fn owned(model: &Model) -> Vec<ObjectRef> {
+        let roles = model
+            .roles
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::Role, [n]));
+        let users = model
+            .users
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::User, [n]));
+        let functions = model
+            .functions
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::Function, [n]));
+        roles.chain(users).chain(functions).collect()
+    }
+
+    fn scratch_prelude(model: &Model) -> ScratchPrelude {
+        let external: Vec<&String> = model
+            .external_roles
+            .iter()
+            .filter(|n| !model.roles.contains_key(*n))
+            .collect();
+        ScratchPrelude {
+            statements: external
+                .iter()
+                .map(|n| format!("CREATE ROLE IF NOT EXISTS {}", plan::sql::q(n)))
+                .collect(),
+            hidden: external
+                .iter()
+                .map(|n| ObjectRef::new(ObjectKind::Role, [n.as_str()]))
+                .collect(),
+        }
     }
 
     fn data_tables(_model: &Model) -> Vec<DataTable> {

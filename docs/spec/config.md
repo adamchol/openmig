@@ -14,7 +14,7 @@ version = 17                        # server major version for the scratch serve
 # Optional, common to both engines
 schemas = "*"                       # "*" (default) = every non-system schema; or ["app", "public"]
 exclude = ["role:cnpg_*"]           # [kind:]glob patterns; see below
-manage_roles = false                # manage cluster-wide roles/users and memberships
+manage_roles = false                # true: own every role on the server (see Scope)
 data = "sync"                       # off | insert | sync: default mode for `data` blocks
 data_max_rows = 10000               # refuse to manage rows of bigger tables
 history_table = "openmig.history"
@@ -74,6 +74,28 @@ inside it. Kinds: `schema`, `database`, `table`, `column`, `index`, `view`, `mat
 Always excluded: system schemas/databases (`pg_*`, `information_schema`, `system`,
 `INFORMATION_SCHEMA`), the history schema/database, built-in roles (`pg_*`), the bootstrap
 superuser and the connecting user.
+
+## Scope
+
+OpenMig can live inside a server it does not own. With `schemas = ["app"]` it inspects, plans and
+checks for drift only the listed schemas (PostgreSQL) or databases (ClickHouse) and what is in
+them. Declaring a schema or database outside the list (or an object in one) is an error; the
+implicit `public`/`default` namespace is simply left alone.
+
+Objects that live in no schema are compared only when OpenMig owns them, that is when the
+reference side of the comparison has them: the schema for `sync` and `check`, the migrations for
+`status --drift`. Everything else on the server is never planned, dropped or reported as drift.
+
+| Objects | Owned |
+|---|---|
+| Roles (both engines) | Declared ones (and those created by earlier migrations, so `generate` drops a role the schema stops declaring). With `manage_roles = true`: every role. |
+| ClickHouse users | Declared ones, even with `manage_roles = true`. |
+| Event triggers, publications (PostgreSQL), SQL functions (ClickHouse) | Declared ones when `schemas` is a list; every one with `schemas = "*"`. |
+
+Privileges and role memberships are compared only for owned roles and users (and `PUBLIC`), so
+grants that the server's administrators give to their own roles, including through
+`ALTER DEFAULT PRIVILEGES`, are never revoked. A declared PostgreSQL role that already exists is
+adopted: its migration creates it when missing and otherwise sets its declared attributes.
 
 ## Config-less mode
 

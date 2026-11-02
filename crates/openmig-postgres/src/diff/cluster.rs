@@ -36,11 +36,9 @@ impl Differ<'_> {
             let r = ObjectRef::new(ObjectKind::Role, [name]);
             match (cur, des) {
                 (None, Some(_)) => self.create(r),
-                (Some(_), None) => {
-                    if self.opts.scope.manage_roles {
-                        self.drop(r);
-                    }
-                }
+                // Only owned roles are left after restricting: a role the migrations created and
+                // the schema no longer declares.
+                (Some(_), None) => self.drop(r),
                 (Some(cur), Some(des)) => {
                     let mut ops = Vec::new();
                     if attributes_differ(cur, des) {

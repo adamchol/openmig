@@ -12,8 +12,8 @@ pub mod sql;
 
 pub use engine::{
     Capabilities, ChangeInfo, DataSync, DataTable, Desired, DiffContext, EncodeOptions,
-    EncodedFile, Engine, PlanMode, SchemaFilter, Scope, ServerVersion, Session, SessionPurpose,
-    SplitBy,
+    EncodedFile, Engine, Owned, PlanMode, SchemaFilter, Scope, ScratchPrelude, ServerVersion,
+    Session, SessionPurpose, SplitBy,
 };
 pub use error::{Error, ExecError, ExecErrorKind, Result};
 pub use exclude::ExcludeSet;

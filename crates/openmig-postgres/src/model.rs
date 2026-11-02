@@ -83,7 +83,7 @@ pub struct Database {
     /// Installed extensions except `plpgsql`. Objects that belong to an extension are not part
     /// of the model.
     pub extensions: BTreeMap<String, Extension>,
-    /// Cluster-wide roles. Empty unless roles are managed (`Scope::manage_roles`).
+    /// Cluster-wide roles: the owned ones, or all with `Scope::manage_roles`.
     pub roles: BTreeMap<String, Role>,
     pub event_triggers: BTreeMap<String, EventTrigger>,
     /// Rows of data-managed tables (`Scope::data_tables`).

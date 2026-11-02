@@ -119,7 +119,7 @@ SELECT * FROM (
   FROM pg_namespace WHERE oid IN (SELECT oid FROM foreign_ns)
   UNION ALL
   SELECT 'role', rolname::text, concat_ws(',', rolcanlogin, rolreplication, rolsuper), ''
-  FROM pg_roles WHERE rolname !~ '^pg_' AND rolname <> 'cdc_reader'
+  FROM pg_roles WHERE rolname !~ '^pg_' AND rolname NOT IN ('cdc_reader', 'app_api')
   UNION ALL
   SELECT 'class', ns.nspname || '.' || c.relname, c.relkind::text, coalesce(c.relacl::text, '')
   FROM pg_class c JOIN foreign_ns ns ON ns.oid = c.relnamespace

@@ -21,7 +21,8 @@ pub async fn check<E: Engine>(
     }
     let desired = load_desired(ctx, ui)?;
     let scope = scope_for(ctx, Some(&desired))?;
-    let mut scratch = Scratch::start(ctx, ui).await?;
+    let mut scratch = Scratch::start_for(ctx, ui, Some(&desired)).await?;
+    let scope = scratch.scope(&scope);
     let result: Result<u8, Error> = async {
         openmig_migrate::replay::<E>(&mut scratch.session, &dir).await?;
         let current = scratch.session.inspect(&scope).await?;

@@ -12,13 +12,13 @@
 use crate::error::{Error, ExecError};
 use crate::exclude::ExcludeSet;
 use crate::history::HistoryRow;
-use crate::object::ObjectRef;
+use crate::object::{ObjectKind, ObjectRef};
 use crate::plan::Plan;
 use crate::rename::{RenameCandidate, RenameHints, RenameSet};
 use crate::sql::Dialect;
 use openmig_hcl::{Document, SchemaSpec, SourceMap, Span};
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::future::Future;
 use std::path::PathBuf;
@@ -68,15 +68,102 @@ pub struct DataTable {
 pub struct Scope {
     pub schemas: SchemaFilter,
     pub exclude: ExcludeSet,
-    /// Manage cluster-wide roles (and users) and their memberships. When false, roles are neither
-    /// inspected nor planned, and grants only consider roles declared in the schema.
+    /// Manage every cluster-wide role (and user) and their memberships. When false, only owned
+    /// roles and users are compared, and grants only to them.
     pub manage_roles: bool,
-    /// Roles declared in the schema; their grants are compared even when `manage_roles` is false.
-    pub declared_roles: Vec<String>,
+    /// Schema-less objects OpenMig owns.
+    pub owned: Owned,
     /// Tables whose rows are managed (`data` blocks).
     pub data_tables: Vec<DataTable>,
     /// Refuse to manage the rows of a table that has more rows than this.
     pub data_max_rows: u64,
+}
+
+/// Schema-less objects that OpenMig owns: roles and users (when roles are not all managed), and
+/// event triggers, publications and SQL functions (when only some schemas are managed). Owned
+/// objects are those the reference side of a comparison has (the schema for `sync`, the
+/// migrations for `status --drift`); others on the target are never compared, so they are never
+/// planned, dropped or reported as drift.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Owned {
+    /// Everything except `hidden` (a scratch server, which holds nothing but OpenMig's objects).
+    all: bool,
+    objects: BTreeSet<ObjectRef>,
+    /// Placeholders created in scratch servers for objects the schema names but doesn't manage.
+    hidden: BTreeSet<ObjectRef>,
+}
+
+impl Owned {
+    pub fn only(objects: impl IntoIterator<Item = ObjectRef>) -> Self {
+        Self {
+            all: false,
+            objects: objects.into_iter().collect(),
+            hidden: BTreeSet::new(),
+        }
+    }
+
+    /// The roles named `names`.
+    pub fn roles<S: AsRef<str>>(names: impl IntoIterator<Item = S>) -> Self {
+        Self::only(
+            names
+                .into_iter()
+                .map(|n| ObjectRef::new(ObjectKind::Role, [n.as_ref()])),
+        )
+    }
+
+    /// Everything but `hidden`.
+    pub fn all_except(hidden: impl IntoIterator<Item = ObjectRef>) -> Self {
+        Self {
+            all: true,
+            objects: BTreeSet::new(),
+            hidden: hidden.into_iter().collect(),
+        }
+    }
+
+    pub fn contains(&self, kind: ObjectKind, name: &str) -> bool {
+        let r = ObjectRef::new(kind, [name]);
+        if self.hidden.contains(&r) {
+            return false;
+        }
+        self.all || self.objects.contains(&r)
+    }
+
+    pub fn extend(&mut self, other: &Owned) {
+        self.all |= other.all;
+        self.objects.extend(other.objects.iter().cloned());
+        self.hidden.extend(other.hidden.iter().cloned());
+    }
+}
+
+/// See [`Engine::scratch_prelude`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScratchPrelude {
+    pub statements: Vec<String>,
+    /// Placeholders among the created objects, which are not OpenMig's and never compared.
+    pub hidden: Vec<ObjectRef>,
+}
+
+impl Scope {
+    /// Whether a role (or ClickHouse user) is compared: all are when roles are managed.
+    pub fn owns_role(&self, kind: ObjectKind, name: &str) -> bool {
+        (self.manage_roles && !self.owned.hidden.contains(&ObjectRef::new(kind, [name])))
+            || self.owned.contains(kind, name)
+    }
+
+    /// Whether a schema-less object other than a role (an event trigger, publication or SQL
+    /// function) is compared: all are when every schema is managed.
+    pub fn owns_global(&self, kind: ObjectKind, name: &str) -> bool {
+        self.schemas == SchemaFilter::All || self.owned.contains(kind, name)
+    }
+
+    /// The scope for inspecting a scratch server, where everything but `prelude`'s
+    /// placeholders belongs to OpenMig.
+    pub fn for_scratch(&self, prelude: &ScratchPrelude) -> Scope {
+        Scope {
+            owned: Owned::all_except(prelude.hidden.iter().cloned()),
+            ..self.clone()
+        }
+    }
 }
 
 /// Why a session is opened. Engines use it to pick session settings.
@@ -215,8 +302,16 @@ pub trait Engine: Sized + Send + Sync + 'static {
     /// matches what inspection returns).
     fn restrict(model: &mut Self::Model, scope: &Scope);
 
-    /// Roles declared in a model (for [`Scope::declared_roles`]).
-    fn declared_roles(model: &Self::Model) -> Vec<String>;
+    /// The schema-less objects a model holds (for [`Scope::owned`]).
+    fn owned(model: &Self::Model) -> Vec<ObjectRef>;
+
+    /// What a fresh scratch server needs before migrations are replayed into it: objects that
+    /// the schema names or declares but that migrations never create (roles named without being
+    /// declared; ClickHouse users declared without `auth`).
+    fn scratch_prelude(model: &Self::Model) -> ScratchPrelude {
+        let _ = model;
+        ScratchPrelude::default()
+    }
 
     /// Tables with managed rows in a decoded model (for [`Scope::data_tables`]).
     fn data_tables(model: &Self::Model) -> Vec<DataTable>;

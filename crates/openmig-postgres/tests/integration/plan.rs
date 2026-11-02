@@ -24,8 +24,8 @@
 use crate::common::{ROLES, TestDb, admin, run};
 use openmig_core::sql::{Dialect, split};
 use openmig_core::{
-    DataSync, DataTable, DiffContext, Engine, Error, ExcludeSet, ObjectKind, ObjectRef, Plan,
-    PlanMode, RenameSet, SchemaFilter, Scope, Session,
+    DataSync, DataTable, DiffContext, Engine, Error, ExcludeSet, ObjectKind, ObjectRef, Owned,
+    Plan, PlanMode, RenameSet, SchemaFilter, Scope, Session,
 };
 use openmig_postgres::model::{Database, Schema};
 use openmig_postgres::restrict::is_managed_grantee;
@@ -141,7 +141,7 @@ fn parse(text: &str) -> Fixture {
             }
         }
     }
-    f.scope.declared_roles.clone_from(&f.roles);
+    f.scope.owned = Owned::roles(&f.roles);
     f.a = format!("{both}{a}");
     f.b = format!("{both}{b}");
     f
@@ -842,7 +842,7 @@ async fn scratch_build_from_decoded_rich_schema() {
     };
     let model = own_roles(source.inspect(&scope).await, prefix);
     let decoded = decoded_from(&model).model;
-    scope.declared_roles = PostgresEngine::declared_roles(&decoded);
+    scope.owned = Owned::only(PostgresEngine::owned(&decoded));
 
     let lease = openmig_testkit::postgres().await;
     let mut scratch = openmig_postgres::PgSession::connect(
@@ -909,7 +909,7 @@ async fn rich_schema_from_and_to_empty() {
         .collect();
     let f = Fixture {
         scope: Scope {
-            declared_roles: roles,
+            owned: Owned::roles(&roles),
             data_tables: vec![DataTable {
                 path: vec!["app".into(), "statuses".into()],
                 columns: Vec::new(),

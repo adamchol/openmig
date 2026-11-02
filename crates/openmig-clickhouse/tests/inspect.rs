@@ -305,13 +305,19 @@ async fn filters(session: &mut openmig_clickhouse::ChSession, full: &Model) {
 
     let unmanaged = session
         .inspect(&Scope {
-            declared_roles: vec!["reader".into()],
+            owned: openmig_core::Owned::roles(["reader"]),
             ..Scope::default()
         })
         .await
         .unwrap();
-    assert!(unmanaged.roles.is_empty() && unmanaged.users.is_empty());
-    assert!(unmanaged.role_grants.is_empty());
+    assert_eq!(unmanaged.roles.keys().collect::<Vec<_>>(), ["reader"]);
+    assert!(unmanaged.users.is_empty());
+    assert!(
+        unmanaged
+            .role_grants
+            .iter()
+            .all(|g| g.grantee == Grantee::Role("reader".into()))
+    );
     assert!(!unmanaged.grants.is_empty());
     assert!(
         unmanaged

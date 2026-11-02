@@ -174,20 +174,6 @@ pub(crate) async fn inspect(
     }
     let oids: Vec<u32> = cat.namespaces.keys().copied().collect();
     let s = Some(oids.as_slice());
-    let roles = async {
-        if scope.manage_roles {
-            query(client, "roles", &q.roles, None).await
-        } else {
-            Ok(Vec::new())
-        }
-    };
-    let memberships = async {
-        if scope.manage_roles {
-            query(client, "role memberships", &q.memberships, None).await
-        } else {
-            Ok(Vec::new())
-        }
-    };
     let (
         relations,
         columns,
@@ -224,8 +210,8 @@ pub(crate) async fn inspect(
         query(client, "dependencies", &q.depends, None),
         query(client, "extension members", &q.extension_members, None),
         query(client, "policy roles", &q.policy_roles, None),
-        roles,
-        memberships,
+        query(client, "roles", &q.roles, None),
+        query(client, "role memberships", &q.memberships, None),
     )?;
 
     types::types(&mut db, &mut cat, &types)?;

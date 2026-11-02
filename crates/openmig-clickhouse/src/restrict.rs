@@ -7,12 +7,10 @@ use openmig_core::{ObjectKind, Scope};
 ///
 /// * databases selected by `scope.schemas` and not excluded, and in them every object that is not
 ///   excluded (excludes match each object kind by its path, see [`crate::model::Object`]);
-/// * functions that are not excluded;
-/// * roles and role memberships only when `scope.manage_roles`;
-/// * grants of managed grantees (every role with `manage_roles`, otherwise the roles declared in
-///   the schema) on objects in scope;
-/// * never users, nor grants and role memberships of users: users are not managed (their
-///   authentication cannot be declared).
+/// * functions that are owned (all of them when every database is managed) and not excluded;
+/// * owned roles (all of them with `scope.manage_roles`) and users that are not excluded, and
+///   their role memberships;
+/// * grants of those roles and users on objects in scope;
 /// * row policies on tables in scope;
 /// * dependencies between remaining objects.
 pub fn restrict(model: &mut Model, scope: &Scope) {
@@ -51,24 +49,24 @@ pub fn restrict(model: &mut Model, scope: &Scope) {
         db.dictionaries
             .retain(|n, _| !excluded(ObjectKind::Dictionary, &[d, n]));
     }
-    model
-        .functions
-        .retain(|n, _| !excluded(ObjectKind::Function, &[n]));
+    model.functions.retain(|n, _| {
+        !excluded(ObjectKind::Function, &[n]) && scope.owns_global(ObjectKind::Function, n)
+    });
 
-    model.users.clear();
-    if scope.manage_roles {
-        model.roles.retain(|n, _| !excluded(ObjectKind::Role, &[n]));
-    } else {
-        model.roles.clear();
-        model.role_grants.clear();
-    }
     let grantee_managed = |grantee: &Grantee| {
-        let Grantee::Role(name) = grantee else {
-            return false;
+        // Users are never all managed: undeclared ones hold credentials OpenMig knows nothing of.
+        let owned = match grantee {
+            Grantee::Role(name) => scope.owns_role(ObjectKind::Role, name),
+            Grantee::User(name) => scope.owned.contains(ObjectKind::User, name),
         };
-        let declared = scope.manage_roles || scope.declared_roles.iter().any(|r| r == name);
-        declared && !ex.is_excluded(&grantee.object_ref())
+        owned && !ex.is_excluded(&grantee.object_ref())
     };
+    model
+        .users
+        .retain(|n, _| grantee_managed(&Grantee::User(n.clone())));
+    model
+        .roles
+        .retain(|n, _| grantee_managed(&Grantee::Role(n.clone())));
     model
         .role_grants
         .retain(|g| grantee_managed(&g.grantee) && !excluded(ObjectKind::Role, &[&g.role]));
@@ -185,6 +183,10 @@ mod tests {
             ])
             .unwrap(),
             manage_roles: true,
+            owned: openmig_core::Owned::only([
+                ObjectRef::new(ObjectKind::Function, ["f"]),
+                ObjectRef::new(ObjectKind::Function, ["debug_f"]),
+            ]),
             ..Scope::default()
         };
         restrict(&mut m, &scope);
@@ -207,14 +209,34 @@ mod tests {
     }
 
     #[test]
-    fn unmanaged_roles_keep_declared_grants() {
+    fn functions_outside_scope_are_not_owned() {
         let mut m = model();
         let scope = Scope {
-            declared_roles: vec!["web".into()],
+            schemas: SchemaFilter::Only(vec!["app".into()]),
+            owned: openmig_core::Owned::only([ObjectRef::new(ObjectKind::Function, ["f"])]),
             ..Scope::default()
         };
         restrict(&mut m, &scope);
-        assert!(m.roles.is_empty() && m.users.is_empty() && m.role_grants.is_empty());
+        assert_eq!(m.functions.keys().collect::<Vec<_>>(), ["f"]);
+        let mut m = model();
+        restrict(&mut m, &Scope::default());
+        assert_eq!(
+            m.functions.len(),
+            2,
+            "every function is owned when no schemas are listed"
+        );
+    }
+
+    #[test]
+    fn unmanaged_roles_keep_declared_grants() {
+        let mut m = model();
+        let scope = Scope {
+            owned: openmig_core::Owned::roles(["web"]),
+            ..Scope::default()
+        };
+        restrict(&mut m, &scope);
+        assert_eq!(m.roles.keys().collect::<Vec<_>>(), ["web"]);
+        assert!(m.users.is_empty() && m.role_grants.is_empty());
         assert_eq!(m.grants.len(), 3);
         assert!(m.grants.iter().all(|g| g.grantee.name() == "web"));
         assert_eq!(m.row_policies.len(), 1);

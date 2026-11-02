@@ -68,12 +68,6 @@ impl<'a> Options<'a> {
     pub fn scratch(&self) -> bool {
         self.mode == PlanMode::Scratch
     }
-
-    /// Roles are compared when they are managed, and always created when building a scratch
-    /// database (grants and policies need them).
-    pub fn roles_compared(&self) -> bool {
-        self.scope.manage_roles || self.scratch()
-    }
 }
 
 /// Compare `current` (with `ctx.renames` applied) to `desired`.
@@ -97,9 +91,7 @@ pub fn diff(
         errors: Vec::new(),
     };
     d.extensions();
-    if opts.roles_compared() {
-        d.roles();
-    }
+    d.roles();
     d.schemas();
     d.event_triggers();
     d.data();
@@ -308,7 +300,7 @@ mod tests {
     #[test]
     fn acl_deltas() {
         let scope = Scope {
-            declared_roles: vec!["web".into(), "admin".into()],
+            owned: openmig_core::Owned::roles(["web", "admin"]),
             ..Scope::default()
         };
         let mut cur = Acl::new();

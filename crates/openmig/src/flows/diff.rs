@@ -40,11 +40,7 @@ pub async fn diff<E: Engine>(ctx: &Context<E>, args: &DiffArgs, ui: &dyn Ui) -> 
     let mut scope = scope_for(ctx, None)?;
     for d in [&from_desired, &to_desired].into_iter().flatten() {
         let s = scope_for(ctx, Some(d))?;
-        for r in s.declared_roles {
-            if !scope.declared_roles.contains(&r) {
-                scope.declared_roles.push(r);
-            }
-        }
+        scope.owned.extend(&s.owned);
         for t in s.data_tables {
             if !scope.data_tables.contains(&t) {
                 scope.data_tables.push(t);

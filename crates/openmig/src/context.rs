@@ -3,7 +3,7 @@
 use crate::cli::{EngineKind as CliEngine, GlobalArgs};
 use indexmap::IndexMap;
 use openmig_config::{Config, ConfigError, DatabaseConfig};
-use openmig_core::{Engine, Error, ExcludeSet, SchemaFilter, Scope};
+use openmig_core::{Engine, Error, ExcludeSet, Owned, SchemaFilter, Scope};
 use openmig_hcl::{Number, Value, VarValue};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -202,7 +202,7 @@ impl<E: Engine> Context<E> {
             },
             exclude,
             manage_roles: self.config.manage_roles,
-            declared_roles: Vec::new(),
+            owned: Owned::default(),
             data_tables: Vec::new(),
             data_max_rows: self.config.data_max_rows,
         })

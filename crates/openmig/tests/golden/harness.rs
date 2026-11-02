@@ -348,11 +348,7 @@ async fn converge<E: Engine>(
 }
 
 fn merge_scope(into: &mut Scope, other: Scope) {
-    for r in other.declared_roles {
-        if !into.declared_roles.contains(&r) {
-            into.declared_roles.push(r);
-        }
-    }
+    into.owned.extend(&other.owned);
     for t in other.data_tables {
         if !into.data_tables.contains(&t) {
             into.data_tables.push(t);

@@ -16,8 +16,8 @@ pub fn is_builtin_role(name: &str) -> bool {
     name.starts_with("pg_")
 }
 
-/// Whether privileges granted to `grantee` are compared: `PUBLIC`, roles declared in the schema,
-/// and every role when roles are managed, except excluded roles.
+/// Whether privileges granted to `grantee` are compared: `PUBLIC` and owned roles (every role when
+/// roles are managed), except excluded roles.
 pub fn is_managed_grantee(grantee: &str, scope: &Scope) -> bool {
     if grantee == PUBLIC {
         return true;
@@ -25,13 +25,14 @@ pub fn is_managed_grantee(grantee: &str, scope: &Scope) -> bool {
     if excluded(&scope.exclude, ObjectKind::Role, &[grantee]) {
         return false;
     }
-    scope.manage_roles || scope.declared_roles.iter().any(|r| r == grantee)
+    scope.owns_role(ObjectKind::Role, grantee)
 }
 
 /// Remove what is outside `scope` from a model, exactly as inspection leaves it out: schemas not
 /// in the schema filter (and extensions installed into them), excluded objects of every kind
-/// (with everything inside them), roles unless they are managed, built-in roles, memberships in
-/// and grants to excluded roles, rows of tables that are gone, and dependencies on removed
+/// (with everything inside them), roles and grantees that are not owned, schema-less objects that
+/// are not owned when only some schemas are managed, built-in roles, memberships in and grants to
+/// excluded roles, rows of tables that are gone, and dependencies on removed
 /// objects.
 pub fn restrict(db: &mut Database, scope: &Scope) {
     let ex = &scope.exclude;
@@ -43,18 +44,19 @@ pub fn restrict(db: &mut Database, scope: &Scope) {
     db.extensions.retain(|n, e| {
         scope.schemas.includes(&e.schema) && !excluded(ex, ObjectKind::Extension, &[n])
     });
-    if scope.manage_roles {
-        db.roles
-            .retain(|n, _| !is_builtin_role(n) && !excluded(ex, ObjectKind::Role, &[n]));
-        for role in db.roles.values_mut() {
-            role.member_of
-                .retain(|g, _| !excluded(ex, ObjectKind::Role, &[g]));
-        }
-    } else {
-        db.roles.clear();
+    db.roles.retain(|n, _| {
+        !is_builtin_role(n)
+            && !excluded(ex, ObjectKind::Role, &[n])
+            && scope.owns_role(ObjectKind::Role, n)
+    });
+    for role in db.roles.values_mut() {
+        role.member_of
+            .retain(|g, _| !excluded(ex, ObjectKind::Role, &[g]));
     }
-    db.event_triggers
-        .retain(|n, _| !excluded(ex, ObjectKind::EventTrigger, &[n]));
+    db.event_triggers.retain(|n, _| {
+        !excluded(ex, ObjectKind::EventTrigger, &[n])
+            && scope.owns_global(ObjectKind::EventTrigger, n)
+    });
     if !ex.is_empty() {
         for_each_acl(db, &mut |acl| {
             acl.retain(|item| {
@@ -246,7 +248,7 @@ mod tests {
     #[test]
     fn managed_grantees() {
         let mut s = scope(&["role:cnpg_*"], false);
-        s.declared_roles = vec!["web".into()];
+        s.owned = openmig_core::Owned::roles(["web"]);
         assert!(is_managed_grantee(PUBLIC, &s));
         assert!(is_managed_grantee("web", &s));
         assert!(!is_managed_grantee("other", &s));

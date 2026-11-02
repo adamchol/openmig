@@ -4,9 +4,11 @@
 use crate::context::Context;
 use crate::ui::Ui;
 use openmig_core::{
-    Desired, DiffContext, Engine, Error, ExecError, ExecErrorKind, Plan, PlanMode, RenameSet,
-    Scope, Session, SessionPurpose, Statement,
+    Desired, DiffContext, Engine, Error, ExecError, ExecErrorKind, ObjectKind, ObjectRef, Owned,
+    Plan, PlanMode, RenameSet, SchemaFilter, Scope, ScratchPrelude, Session, SessionPurpose,
+    Statement,
 };
+use openmig_hcl::Span;
 use openmig_hcl::{Diagnostic, Diagnostics, LoadOptions};
 use openmig_scratch::ScratchServer;
 
@@ -37,7 +39,8 @@ pub fn scope_for<E: Engine>(
 ) -> Result<Scope, Error> {
     let mut scope = ctx.scope()?;
     if let Some(d) = desired {
-        scope.declared_roles = E::declared_roles(&d.model);
+        check_declared_in_scope(d, &scope)?;
+        scope.owned = Owned::only(E::owned(&d.model));
         let default = match ctx.config.data {
             openmig_config::DataMode::Off => None,
             openmig_config::DataMode::Insert => Some(openmig_core::DataSync::Insert),
@@ -56,10 +59,53 @@ pub fn scope_for<E: Engine>(
     Ok(scope)
 }
 
+/// Fail when the schema declares a schema or database (or an object in one) that `schemas` leaves
+/// out: it would silently never be created. The implicit `public`/`default` and default namespace
+/// have no declaration and are restricted away instead.
+fn check_declared_in_scope<M>(desired: &Desired<M>, scope: &Scope) -> Result<(), Error> {
+    let SchemaFilter::Only(list) = &scope.schemas else {
+        return Ok(());
+    };
+    let mut outside: Vec<(&ObjectRef, &Span)> = desired
+        .origins
+        .iter()
+        .filter(|(o, _)| matches!(o.kind, ObjectKind::Schema | ObjectKind::Database))
+        .filter(|(o, _)| !scope.schemas.includes(&o.path[0]))
+        .collect();
+    if outside.is_empty() {
+        return Ok(());
+    }
+    outside.sort_by_key(|(_, span)| (span.file, span.start));
+    let list = list
+        .iter()
+        .map(|s| format!("\"{s}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let diags = Diagnostics {
+        items: outside
+            .into_iter()
+            .map(|(o, span)| {
+                Diagnostic::error(format!(
+                    "{} `{}` is outside `schemas = [{list}]`",
+                    o.kind.as_str(),
+                    o.path[0]
+                ))
+                .at(*span)
+                .with_label("declared here")
+                .with_help("add it to `schemas` in openmig.toml, or qualify the object with a listed schema")
+            })
+            .collect(),
+    };
+    Err(Error::Schema {
+        rendered: diags.render(&desired.sources, false),
+    })
+}
+
 /// A scratch server and a session connected to its working database.
 pub struct Scratch<E: Engine> {
     server: ScratchServer,
     pub session: E::Session,
+    prelude: ScratchPrelude,
 }
 
 impl<E: Engine> Scratch<E> {
@@ -70,7 +116,32 @@ impl<E: Engine> Scratch<E> {
         ui.info(&format!("scratch {} {} started", E::NAME, server.version()));
         let mut session = E::connect(server.url(), &ctx.settings, SessionPurpose::Scratch).await?;
         session.reset().await?;
-        Ok(Self { server, session })
+        Ok(Self {
+            server,
+            session,
+            prelude: ScratchPrelude::default(),
+        })
+    }
+
+    /// A scratch server prepared for replaying migrations of `desired` (see
+    /// [`Engine::scratch_prelude`]); the prelude is applied again after every reset.
+    pub async fn start_for(
+        ctx: &Context<E>,
+        ui: &dyn Ui,
+        desired: Option<&Desired<E::Model>>,
+    ) -> Result<Self, Error> {
+        let mut scratch = Self::start(ctx, ui).await?;
+        if let Some(d) = desired {
+            scratch.prelude = E::scratch_prelude(&d.model);
+            scratch.apply_prelude().await?;
+        }
+        Ok(scratch)
+    }
+
+    /// The scope for inspecting this server: everything on it is OpenMig's but the prelude's
+    /// placeholders.
+    pub fn scope(&self, scope: &Scope) -> Scope {
+        scope.for_scratch(&self.prelude)
     }
 
     pub fn version(&self) -> &str {
@@ -78,7 +149,18 @@ impl<E: Engine> Scratch<E> {
     }
 
     pub async fn reset(&mut self) -> Result<(), Error> {
-        self.session.reset().await
+        self.session.reset().await?;
+        self.apply_prelude().await
+    }
+
+    async fn apply_prelude(&mut self) -> Result<(), Error> {
+        for sql in &self.prelude.statements {
+            self.session.execute(sql).await.map_err(|mut e| {
+                e.statement.get_or_insert_with(|| sql.clone());
+                Error::Exec(e)
+            })?;
+        }
+        Ok(())
     }
 
     pub async fn stop(self) -> Result<(), Error> {
@@ -97,6 +179,10 @@ pub async fn normalize<E: Engine>(
     scope: &Scope,
 ) -> Result<E::Model, Error> {
     let pristine = session.inspect(scope).await?;
+    // Implicit namespaces outside the scope (`public`) exist in every pristine database but are
+    // invisible to inspection, so the diff would try to create them.
+    let mut model = desired.model.clone();
+    E::restrict(&mut model, scope);
     let renames = RenameSet::default();
     let dctx = DiffContext::<E> {
         settings: &ctx.settings,
@@ -105,8 +191,8 @@ pub async fn normalize<E: Engine>(
         mode: PlanMode::Scratch,
         allow_recreate: false,
     };
-    let changes = E::diff(&pristine, &desired.model, &dctx)?;
-    let plan = E::plan(changes, &pristine, &desired.model, &dctx)?;
+    let changes = E::diff(&pristine, &model, &dctx)?;
+    let plan = E::plan(changes, &pristine, &model, &dctx)?;
     apply_with_retry::<E>(session, &plan, desired).await?;
     session.inspect(scope).await
 }

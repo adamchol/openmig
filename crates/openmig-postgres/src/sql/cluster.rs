@@ -73,8 +73,9 @@ fn role_options(role: &Role, base: Option<&Role>) -> Vec<String> {
 }
 
 /// `CREATE ROLE` guarded by an existence check: roles are cluster-wide, so a database's
-/// migrations must not fail on a cluster where another database already created the role. An
-/// existing role is left as it is; differing attributes show up as drift.
+/// migrations must not fail on a cluster where the role already exists (created by another
+/// database, or by whoever runs the server). An existing role is given the declared non-default
+/// attributes (setting every attribute would need superuser rights); others show up as drift.
 pub(crate) fn create_role(role: &Role) -> String {
     let options = role_options(role, None);
     let create = if options.is_empty() {
@@ -86,12 +87,20 @@ pub(crate) fn create_role(role: &Role) -> String {
             options.join(" ")
         )
     };
-    guarded_create_role(&role.name, &create)
+    let alter = (!options.is_empty()).then(|| {
+        format!(
+            "ALTER ROLE {} WITH {}",
+            ident(&role.name),
+            options.join(" ")
+        )
+    });
+    guarded_create_role(&role.name, &create, alter.as_deref())
 }
 
-fn guarded_create_role(name: &str, create: &str) -> String {
+fn guarded_create_role(name: &str, create: &str, otherwise: Option<&str>) -> String {
+    let otherwise = otherwise.map(|s| format!(" ELSE {s};")).unwrap_or_default();
     let body = format!(
-        "BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = {}) THEN {create}; END IF; END",
+        "BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = {}) THEN {create};{otherwise} END IF; END",
         literal(name)
     );
     let tag = openmig_core::sql::dollar_tag(&body);
@@ -100,7 +109,7 @@ fn guarded_create_role(name: &str, create: &str) -> String {
 
 /// `CREATE ROLE ... NOLOGIN` unless a role of that name exists.
 pub(crate) fn create_role_if_missing(name: &str) -> String {
-    guarded_create_role(name, &format!("CREATE ROLE {} NOLOGIN", ident(name)))
+    guarded_create_role(name, &format!("CREATE ROLE {} NOLOGIN", ident(name)), None)
 }
 
 pub(crate) fn alter_role(current: &Role, desired: &Role) -> Option<String> {
@@ -186,7 +195,8 @@ mod tests {
             create_role(&r),
             "DO $$BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'web') THEN \
              CREATE ROLE \"web\" WITH NOINHERIT LOGIN CONNECTION LIMIT 10 VALID UNTIL '2030-01-01 \
-             00:00:00+00'; END IF; END$$"
+             00:00:00+00'; ELSE ALTER ROLE \"web\" WITH NOINHERIT LOGIN CONNECTION LIMIT 10 VALID \
+             UNTIL '2030-01-01 00:00:00+00'; END IF; END$$"
         );
         let mut s = r.clone();
         s.login = false;

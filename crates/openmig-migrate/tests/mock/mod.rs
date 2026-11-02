@@ -46,7 +46,7 @@ impl Engine for MockEngine {
         unimplemented!()
     }
     fn restrict(_: &mut Vec<String>, _: &Scope) {}
-    fn declared_roles(_: &Vec<String>) -> Vec<String> {
+    fn owned(_: &Vec<String>) -> Vec<openmig_core::ObjectRef> {
         Vec::new()
     }
     fn data_tables(_: &Vec<String>) -> Vec<openmig_core::DataTable> {

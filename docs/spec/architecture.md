@@ -140,8 +140,8 @@ nested in it. `plan` turns changes into ordered statements:
   Retyping an attribute while a table column uses the type is unsupported. Domains: default,
   `NOT NULL` and checks in place; a changed base type or collation recreates the domain when no
   table column uses it, otherwise unsupported.
-* Roles (only with `manage_roles`, and always in scratch builds): `CREATE ROLE`, `ALTER ROLE` for
-  attributes, memberships with `GRANT role TO member WITH ADMIN|INHERIT|SET TRUE` (16+; only
+* Roles (owned ones, `config.md`): `CREATE ROLE` guarded by an existence check that otherwise
+  sets the declared non-default attributes on the existing role, `ALTER ROLE` for attributes, memberships with `GRANT role TO member WITH ADMIN|INHERIT|SET TRUE` (16+; only
   `ADMIN OPTION` before) and `REVOKE ... OPTION FOR`. An expiry cannot be removed, so `VALID UNTIL
   'infinity'` and no expiry compare equal.
 * Privileges: only managed grantees are compared (`hcl.md`). A created (or recreated) object starts
@@ -196,8 +196,10 @@ Plans that create SQL-language functions with string bodies start with
 in the plan, and their references are not recorded in `pg_depend`.
 
 Scratch builds plan no drops: the pristine database only has the `public` schema, which the
-decoded model always declares. Roles named by the decoded model but not declared
-(`external_roles`) are created `NOLOGIN` when missing.
+decoded model always declares (and which is restricted away when `schemas` leaves it out). Roles
+named by the decoded model but not declared (`external_roles`) are created `NOLOGIN` when missing;
+before migrations are replayed into a scratch server they are created there too, and they are never
+compared.
 
 ### ClickHouse planning rules
 

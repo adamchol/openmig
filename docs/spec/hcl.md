@@ -382,9 +382,9 @@ are not declared. Current values are never compared.
 | `member_of` | list of role refs or names, or `{ role = ..., admin = bool, inherit = bool, set = bool }` | Role memberships. Defaults: `admin = false`, `set = true`, `inherit` = the member's own `inherit` (as `GRANT` does on PostgreSQL 16+). |
 | `comment` | string | |
 
-Passwords are never part of the schema. Roles are cluster-wide: OpenMig manages them only with
-`manage_roles = true`; otherwise role blocks only declare roles that grants and policies may name,
-and they are created in scratch databases only.
+Passwords are never part of the schema. Roles are cluster-wide: OpenMig manages the roles the
+schema declares (and every role with `manage_roles = true`, see `config.md`). A declared role that
+already exists on the server is adopted.
 
 ### `grant` / `revoke`
 

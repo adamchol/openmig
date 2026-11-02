@@ -25,8 +25,9 @@ pub use session::{MIN_SERVER_VERSION, PgSession, SCRATCH_DATABASE};
 pub use settings::{PgSettings, PublicDefaults};
 
 use openmig_core::{
-    DataTable, Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error, Plan,
-    RenameCandidate, RenameHints, RenameSet, Scope, SessionPurpose,
+    DataTable, Desired, Dialect, DiffContext, EncodeOptions, EncodedFile, Engine, Error,
+    ObjectKind, ObjectRef, Plan, RenameCandidate, RenameHints, RenameSet, Scope, ScratchPrelude,
+    SessionPurpose,
 };
 use openmig_hcl::{Document, SchemaSpec};
 use std::time::Duration;
@@ -62,8 +63,32 @@ impl Engine for PostgresEngine {
         restrict::restrict(model, scope);
     }
 
-    fn declared_roles(model: &Database) -> Vec<String> {
-        model.roles.keys().cloned().collect()
+    fn owned(model: &Database) -> Vec<ObjectRef> {
+        let roles = model
+            .roles
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::Role, [n]));
+        let event_triggers = model
+            .event_triggers
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::EventTrigger, [n]));
+        roles.chain(event_triggers).collect()
+    }
+
+    fn scratch_prelude(model: &Database) -> ScratchPrelude {
+        let external = model
+            .external_roles
+            .iter()
+            .filter(|n| !model.roles.contains_key(*n));
+        ScratchPrelude {
+            statements: external
+                .clone()
+                .map(|n| sql::create_role_if_missing(n))
+                .collect(),
+            hidden: external
+                .map(|n| ObjectRef::new(ObjectKind::Role, [n]))
+                .collect(),
+        }
     }
 
     fn data_tables(model: &Database) -> Vec<DataTable> {

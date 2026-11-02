@@ -1,10 +1,10 @@
 //! `openmig status`.
 
-use super::common::{Scratch, plan_between, scope_for};
+use super::common::{Scratch, load_desired, plan_between, scope_for};
 use crate::cli::StatusArgs;
 use crate::context::Context;
 use crate::ui::Ui;
-use openmig_core::{Engine, Error, PlanMode, RenameSet, Session, SessionPurpose};
+use openmig_core::{Engine, Error, Owned, PlanMode, RenameSet, Session, SessionPurpose};
 use openmig_migrate::{MigrationDir, StatusState};
 
 pub async fn status<E: Engine>(
@@ -50,16 +50,24 @@ pub async fn status<E: Engine>(
         ));
     }
     if args.drift {
-        let scope = scope_for(ctx, None)?;
-        let current = target.inspect(&scope).await?;
-        let mut scratch = Scratch::start(ctx, ui).await?;
+        // The schema, when there is one, only says which placeholders replaying needs.
+        let desired = match ctx.require_schema() {
+            Ok(_) => Some(load_desired(ctx, ui)?),
+            Err(_) => None,
+        };
+        let mut scope = scope_for(ctx, None)?;
+        let mut scratch = Scratch::start_for(ctx, ui, desired.as_ref()).await?;
+        let scratch_scope = scratch.scope(&scope);
         let replayed = async {
             openmig_migrate::replay::<E>(&mut scratch.session, &dir).await?;
-            scratch.session.inspect(&scope).await
+            scratch.session.inspect(&scratch_scope).await
         }
         .await;
         let _ = scratch.stop().await;
         let replayed = replayed?;
+        // What the migrations create is OpenMig's; nothing else on the target is compared.
+        scope.owned = Owned::only(E::owned(&replayed));
+        let current = target.inspect(&scope).await?;
         let plan = plan_between(
             ctx,
             &scope,
