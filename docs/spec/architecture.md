@@ -78,7 +78,7 @@ nested in it. `plan` turns changes into ordered statements:
    * creation rank: roles, extensions, schemas, types (enum, composite, domain), sequences,
      functions needed by tables, tables (without cyclic foreign keys), indexes, constraints and
      foreign keys, views (topologically), materialized views, remaining functions and procedures,
-     triggers, event triggers, RLS and policies, grants, comments, data;
+     triggers, event triggers, publications, RLS and policies, grants, comments, data;
    * drops run after creations unless a dependency forces them earlier; dropping X happens before
      dropping Y when X depends on Y; recreating a name happens after dropping it;
    * foreign keys that form a cycle are added with `ALTER TABLE ... ADD CONSTRAINT` after all tables;

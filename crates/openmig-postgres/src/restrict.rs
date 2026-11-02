@@ -57,6 +57,18 @@ pub fn restrict(db: &mut Database, scope: &Scope) {
         !excluded(ex, ObjectKind::EventTrigger, &[n])
             && scope.owns_global(ObjectKind::EventTrigger, n)
     });
+    // A publication that reaches outside the scope belongs to someone else, whoever its name.
+    let schemas: Vec<String> = db.schemas.keys().cloned().collect();
+    db.publications.retain(|n, p| {
+        !excluded(ex, ObjectKind::Publication, &[n])
+            && scope.owns_global(ObjectKind::Publication, n)
+            && !p.all_tables
+            && p.schemas.iter().all(|s| schemas.contains(s))
+            && p.tables.keys().all(|t| {
+                schemas.contains(&t.schema)
+                    && !excluded(ex, ObjectKind::Table, &[&t.schema, &t.name])
+            })
+    });
     if !ex.is_empty() {
         for_each_acl(db, &mut |acl| {
             acl.retain(|item| {

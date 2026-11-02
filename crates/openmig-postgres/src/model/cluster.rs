@@ -72,3 +72,62 @@ pub struct EventTrigger {
     /// Recorded for information; owners are not managed.
     pub owner: String,
 }
+
+/// A publication over tables of managed schemas (`FOR TABLE`, `FOR TABLES IN SCHEMA`). Publications
+/// `FOR ALL TABLES` are inspected but never in scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Publication {
+    pub name: String,
+    pub all_tables: bool,
+    pub tables: BTreeMap<QualifiedName, PublishedTable>,
+    /// `FOR TABLES IN SCHEMA` (PostgreSQL 15+), sorted.
+    pub schemas: Vec<String>,
+    pub insert: bool,
+    pub update: bool,
+    pub delete: bool,
+    pub truncate: bool,
+    pub via_partition_root: bool,
+    pub comment: Option<String>,
+    /// Recorded for information; owners are not managed.
+    pub owner: String,
+}
+
+impl Publication {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            all_tables: false,
+            tables: BTreeMap::new(),
+            schemas: Vec::new(),
+            insert: true,
+            update: true,
+            delete: true,
+            truncate: true,
+            via_partition_root: false,
+            comment: None,
+            owner: String::new(),
+        }
+    }
+
+    /// The `publish` operations in PostgreSQL's order.
+    pub fn operations(&self) -> Vec<&'static str> {
+        [
+            (self.insert, "insert"),
+            (self.update, "update"),
+            (self.delete, "delete"),
+            (self.truncate, "truncate"),
+        ]
+        .into_iter()
+        .filter_map(|(on, op)| on.then_some(op))
+        .collect()
+    }
+}
+
+/// One table of a publication.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PublishedTable {
+    /// Column list (PostgreSQL 15+) in table order; empty for every column.
+    pub columns: Vec<String>,
+    /// Row filter (PostgreSQL 15+) as `pg_get_expr` prints it.
+    pub filter: Option<String>,
+}

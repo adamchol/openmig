@@ -72,7 +72,11 @@ impl Engine for PostgresEngine {
             .event_triggers
             .keys()
             .map(|n| ObjectRef::new(ObjectKind::EventTrigger, [n]));
-        roles.chain(event_triggers).collect()
+        let publications = model
+            .publications
+            .keys()
+            .map(|n| ObjectRef::new(ObjectKind::Publication, [n]));
+        roles.chain(event_triggers).chain(publications).collect()
     }
 
     fn scratch_prelude(model: &Database) -> ScratchPrelude {

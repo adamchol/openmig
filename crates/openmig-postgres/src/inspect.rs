@@ -188,6 +188,8 @@ pub(crate) async fn inspect(
         parts,
         extensions,
         event_triggers,
+        publications,
+        publication_tables,
         depends,
         members,
         policy_roles,
@@ -207,6 +209,8 @@ pub(crate) async fn inspect(
         query(client, "rules and defaults", &q.rules_and_defaults, s),
         query(client, "extensions", &q.extensions, None),
         query(client, "event triggers", &q.event_triggers, None),
+        query(client, "publications", &q.publications, None),
+        query(client, "publication tables", &q.publication_tables, None),
         query(client, "dependencies", &q.depends, None),
         query(client, "extension members", &q.extension_members, None),
         query(client, "policy roles", &q.policy_roles, None),
@@ -226,6 +230,7 @@ pub(crate) async fn inspect(
     routines::functions(&mut db, &mut cat, &functions)?;
     cluster::extensions(&mut db, &mut cat, &extensions, scope);
     cluster::event_triggers(&mut db, &mut cat, &event_triggers);
+    cluster::publications(&mut db, &publications, &publication_tables);
     cluster::roles(&mut db, &roles, &memberships);
     deps::dependencies(
         &mut db,

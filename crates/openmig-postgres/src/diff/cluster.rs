@@ -1,4 +1,4 @@
-//! Extensions, roles and event triggers.
+//! Extensions, roles, event triggers and publications.
 
 use super::{AlterOp, Differ, merge};
 use crate::model::{Membership, Role};
@@ -68,6 +68,30 @@ impl Differ<'_> {
             a == b
         } else {
             a.admin == b.admin
+        }
+    }
+
+    pub(super) fn publications(&mut self) {
+        for (name, cur, des) in merge(&self.cur.publications, &self.des.publications) {
+            let r = ObjectRef::new(ObjectKind::Publication, [name]);
+            match (cur, des) {
+                (None, Some(_)) => self.create(r),
+                (Some(_), None) => self.drop(r),
+                (Some(cur), Some(des)) => {
+                    let mut ops = Vec::new();
+                    if cur.tables != des.tables || cur.schemas != des.schemas {
+                        ops.push(AlterOp::PublicationTables);
+                    }
+                    if cur.operations() != des.operations()
+                        || cur.via_partition_root != des.via_partition_root
+                    {
+                        ops.push(AlterOp::PublicationOptions);
+                    }
+                    Self::comment_op(&mut ops, &cur.comment, &des.comment);
+                    self.alter(r, ops);
+                }
+                (None, None) => {}
+            }
         }
     }
 

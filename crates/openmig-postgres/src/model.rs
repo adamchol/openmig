@@ -17,7 +17,7 @@ mod table;
 mod types;
 
 pub use acl::{Acl, AclItem, PUBLIC, Privilege, default_acl};
-pub use cluster::{EventTrigger, Extension, Membership, Role};
+pub use cluster::{EventTrigger, Extension, Membership, Publication, PublishedTable, Role};
 pub use objects::Object;
 pub use routine::{
     ArgMode, Function, FunctionArg, FunctionBody, Parallel, ReturnColumn, Returns, Volatility,
@@ -86,6 +86,7 @@ pub struct Database {
     /// Cluster-wide roles: the owned ones, or all with `Scope::manage_roles`.
     pub roles: BTreeMap<String, Role>,
     pub event_triggers: BTreeMap<String, EventTrigger>,
+    pub publications: BTreeMap<String, Publication>,
     /// Rows of data-managed tables (`Scope::data_tables`).
     pub data: BTreeMap<QualifiedName, TableData>,
     /// "`from` depends on `to`" edges between objects of this model, from `pg_depend` (and
@@ -178,6 +179,7 @@ impl Database {
     pub fn is_empty(&self) -> bool {
         self.extensions.is_empty()
             && self.event_triggers.is_empty()
+            && self.publications.is_empty()
             && self
                 .schemas
                 .values()

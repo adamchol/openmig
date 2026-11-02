@@ -19,6 +19,8 @@ pub(super) struct Queries {
     pub rules_and_defaults: String,
     pub extensions: String,
     pub event_triggers: String,
+    pub publications: String,
+    pub publication_tables: String,
     pub roles: String,
     pub memberships: String,
     pub depends: String,
@@ -43,6 +45,8 @@ impl Queries {
             rules_and_defaults: rules_and_defaults(),
             extensions: extensions(),
             event_triggers: event_triggers(),
+            publications: publications(major),
+            publication_tables: publication_tables(major),
             roles: roles(),
             memberships: memberships(major),
             depends: depends(),
@@ -366,6 +370,46 @@ fn event_triggers() -> String {
          JOIN pg_namespace pn ON pn.oid = p.pronamespace \
          WHERE {member}",
         member = not_extension_member("pg_event_trigger", "e.oid"),
+    )
+}
+
+fn publications(major: u32) -> String {
+    let schemas = if major >= 15 {
+        "coalesce((SELECT array_agg(n.nspname::text ORDER BY n.nspname) \
+           FROM pg_publication_namespace pn JOIN pg_namespace n ON n.oid = pn.pnnspid \
+           WHERE pn.pnpubid = p.oid), '{}')"
+    } else {
+        "'{}'::text[]"
+    };
+    format!(
+        "SELECT p.oid, p.pubname::text AS name, p.puballtables AS all_tables, \
+           p.pubinsert AS ins, p.pubupdate AS upd, p.pubdelete AS del, p.pubtruncate AS trunc, \
+           p.pubviaroot AS via_root, {schemas} AS schemas, \
+           pg_get_userbyid(p.pubowner)::text AS owner, \
+           obj_description(p.oid, 'pg_publication') AS comment \
+         FROM pg_publication p"
+    )
+}
+
+/// Tables of publications with their column lists and row filters (PostgreSQL 15+).
+fn publication_tables(major: u32) -> String {
+    let (columns, filter) = if major >= 15 {
+        (
+            "coalesce((SELECT array_agg(a.attname::text ORDER BY a.attnum) \
+               FROM pg_attribute a WHERE a.attrelid = r.prrelid AND a.attnum = ANY (r.prattrs)), \
+               '{}')",
+            "pg_get_expr(r.prqual, r.prrelid)",
+        )
+    } else {
+        ("'{}'::text[]", "NULL::text")
+    };
+    format!(
+        "SELECT p.pubname::text AS publication, n.nspname::text AS schema, \
+           c.relname::text AS table, {columns} AS columns, {filter} AS filter \
+         FROM pg_publication_rel r \
+         JOIN pg_publication p ON p.oid = r.prpubid \
+         JOIN pg_class c ON c.oid = r.prrelid \
+         JOIN pg_namespace n ON n.oid = c.relnamespace"
     )
 }
 

@@ -8,7 +8,8 @@
 use super::{
     Check, Column, Composite, CompositeField, Database, Domain, DomainCheck, Enum, EventTrigger,
     Exclusion, Extension, ForeignKey, Function, Index, MaterializedView, Policy, PrimaryKey,
-    QualifiedName, Role, Schema, Sequence, Table, TableData, Trigger, Unique, View, ViewColumn,
+    Publication, QualifiedName, Role, Schema, Sequence, Table, TableData, Trigger, Unique, View,
+    ViewColumn,
 };
 use openmig_core::{ObjectKind, ObjectRef};
 
@@ -19,6 +20,7 @@ pub enum Object<'a> {
     Extension(&'a Extension),
     Role(&'a Role),
     EventTrigger(&'a EventTrigger),
+    Publication(&'a Publication),
     Table(&'a Table),
     Column(&'a Column),
     ViewColumn(&'a ViewColumn),
@@ -61,6 +63,7 @@ impl Database {
             (K::Extension, [n]) => self.extensions.get(*n).map(Object::Extension),
             (K::Role, [n]) => self.roles.get(*n).map(Object::Role),
             (K::EventTrigger, [n]) => self.event_triggers.get(*n).map(Object::EventTrigger),
+            (K::Publication, [n]) => self.publications.get(*n).map(Object::Publication),
             (K::Data, [s, t]) => self.data.get(&QualifiedName::new(*s, *t)).map(Object::Data),
             (kind, [s, rest @ ..]) => {
                 let schema = self.schemas.get(*s)?;
@@ -75,7 +78,7 @@ impl Database {
     }
 
     /// Every object with its reference, in a deterministic order: extensions, roles, schemas with
-    /// their contents, event triggers, table data.
+    /// their contents, event triggers, publications, table data.
     pub fn objects(&self) -> Vec<(ObjectRef, Object<'_>)> {
         let mut out = Vec::new();
         for e in self.extensions.values() {
@@ -94,6 +97,12 @@ impl Database {
             out.push((
                 ObjectRef::new(ObjectKind::EventTrigger, [&e.name]),
                 Object::EventTrigger(e),
+            ));
+        }
+        for p in self.publications.values() {
+            out.push((
+                ObjectRef::new(ObjectKind::Publication, [&p.name]),
+                Object::Publication(p),
             ));
         }
         for (name, d) in &self.data {

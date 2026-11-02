@@ -94,6 +94,7 @@ pub fn diff(
     d.roles();
     d.schemas();
     d.event_triggers();
+    d.publications();
     d.data();
     match d.errors.into_iter().next() {
         Some(e) => Err(e),

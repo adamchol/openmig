@@ -1,6 +1,7 @@
 //! Steps for in-place changes ([`AlterOp`]).
 
 use super::Planner;
+use super::create::publication_requires;
 use super::refs::{functions_named, type_refs};
 use super::step::{Phase, Step, StepKind, rank};
 use crate::diff::AlterOp;
@@ -22,6 +23,7 @@ pub(super) fn object_comment(o: Object<'_>) -> Option<&str> {
         Object::Extension(x) => x.comment.as_deref(),
         Object::Role(x) => x.comment.as_deref(),
         Object::EventTrigger(x) => x.comment.as_deref(),
+        Object::Publication(x) => x.comment.as_deref(),
         Object::Table(x) => x.comment.as_deref(),
         Object::Column(x) => x.comment.as_deref(),
         Object::ViewColumn(x) => x.comment.as_deref(),
@@ -96,6 +98,24 @@ impl Planner<'_> {
                     format!("Set firing of {}", noun(r)),
                 );
                 self.push(step);
+            }
+            (Object::Publication(c), Object::Publication(d)) => {
+                let mut step = Step::new(r, Phase::Create, rank::PUBLICATION, " alter");
+                if has(&AlterOp::PublicationTables) {
+                    for s in sql::alter_publication_tables(c, d) {
+                        step.sql(s, format!("Change the tables of {}", noun(r)));
+                    }
+                    step.requires.extend(publication_requires(d));
+                }
+                if has(&AlterOp::PublicationOptions) {
+                    step.sql(
+                        sql::alter_publication_options(d),
+                        format!("Set the options of {}", noun(r)),
+                    );
+                }
+                if !step.statements.is_empty() {
+                    self.push(step);
+                }
             }
             (Object::Table(c), Object::Table(d)) => self.alter_table(r, c, d, ops),
             (Object::Column(c), Object::Column(d)) => self.alter_column(r, c, d, ops),

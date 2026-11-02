@@ -6,8 +6,8 @@ use super::{Planner, nested};
 use crate::diff::{acl_for_new, drop_destroys, inherited_columns};
 use crate::model::{
     Column, Database, Domain, EventTrigger, ForeignKey, Function, Index, KeyExpr, MaterializedView,
-    Object, PUBLIC, Policy, QualifiedName, ReplicaIdentity, Role, Sequence, Table, Trigger,
-    TriggerEnabled, View,
+    Object, PUBLIC, Policy, Publication, QualifiedName, ReplicaIdentity, Role, Sequence, Table,
+    Trigger, TriggerEnabled, View,
 };
 use crate::sql::{self, noun, relation_of};
 use openmig_core::{Error, ObjectKind, ObjectRef, PlanMode};
@@ -175,6 +175,14 @@ impl Planner<'_> {
             }
             Object::Role(role) => self.create_role(r, role),
             Object::EventTrigger(t) => self.create_event_trigger(r, t),
+            Object::Publication(p) => {
+                let mut step = Step::new(r, Phase::Create, rank::PUBLICATION, "");
+                step.sql(sql::create_publication(p), format!("Create {}", noun(r)));
+                step.creates.push(r.clone());
+                step.requires.extend(publication_requires(p));
+                self.push(step);
+                self.comment_if(r, p.comment.as_deref());
+            }
             Object::Table(t) => self.create_table(r, t),
             Object::Column(c) => self.create_column(r, c),
             Object::ViewColumn(_) | Object::CompositeField(_) | Object::Data(_) => {}
@@ -969,6 +977,7 @@ impl Planner<'_> {
             Object::Extension(e) => Some(sql::drop_extension(&e.name)),
             Object::Role(role) => Some(sql::drop_role(&role.name)),
             Object::EventTrigger(t) => Some(sql::drop_event_trigger(&t.name)),
+            Object::Publication(p) => Some(sql::drop_publication(&p.name)),
             Object::Table(t) => {
                 for fk in t.foreign_keys.keys() {
                     let fr = r3(ObjectKind::ForeignKey, &p[0], &p[1], fk);
@@ -1078,4 +1087,24 @@ impl Planner<'_> {
         step.creates.push(to.clone());
         self.push(step);
     }
+}
+
+/// What a publication's definition names: its schemas, tables and listed columns.
+pub(super) fn publication_requires(p: &Publication) -> Vec<ObjectRef> {
+    let schemas = p
+        .schemas
+        .iter()
+        .map(|s| ObjectRef::new(ObjectKind::Schema, [s]));
+    let tables = p.tables.iter().flat_map(|(name, t)| {
+        std::iter::once(ObjectRef::new(
+            ObjectKind::Table,
+            [&name.schema, &name.name],
+        ))
+        .chain(
+            t.columns
+                .iter()
+                .map(|c| ObjectRef::new(ObjectKind::Column, [&name.schema, &name.name, c])),
+        )
+    });
+    schemas.chain(tables).collect()
 }

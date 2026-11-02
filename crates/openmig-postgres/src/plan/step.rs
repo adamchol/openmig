@@ -35,6 +35,7 @@ pub(crate) mod rank {
     pub const FUNCTION: u16 = 110;
     pub const TRIGGER: u16 = 120;
     pub const EVENT_TRIGGER: u16 = 130;
+    pub const PUBLICATION: u16 = 135;
     pub const RLS: u16 = 140;
     pub const POLICY: u16 = 141;
     pub const GRANT: u16 = 150;
@@ -50,6 +51,7 @@ pub(crate) fn drop_rank(kind: ObjectKind) -> u16 {
         K::Policy => 10,
         K::Trigger => 11,
         K::EventTrigger => 12,
+        K::Publication => 13,
         K::ForeignKey => 20,
         K::PrimaryKey | K::Unique | K::Check | K::Exclusion => 21,
         K::Index => 22,

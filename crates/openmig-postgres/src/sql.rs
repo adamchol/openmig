@@ -86,6 +86,7 @@ pub(crate) fn object_target(r: &ObjectRef, model: &Database) -> Option<String> {
         (K::Extension, [e]) => format!("EXTENSION {}", ident(e)),
         (K::Role, [n]) => format!("ROLE {}", ident(n)),
         (K::EventTrigger, [n]) => format!("EVENT TRIGGER {}", ident(n)),
+        (K::Publication, [n]) => format!("PUBLICATION {}", ident(n)),
         (K::Table, [s, n]) => format!("TABLE {}", qualified(s, n)),
         (K::View, [s, n]) => format!("VIEW {}", qualified(s, n)),
         (K::MaterializedView, [s, n]) => format!("MATERIALIZED VIEW {}", qualified(s, n)),

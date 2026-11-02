@@ -2996,6 +2996,7 @@ Database {
             owner: "openmig",
         },
     },
+    publications: {},
     data: {
         QualifiedName {
             schema: "app",

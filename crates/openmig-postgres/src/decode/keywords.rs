@@ -184,3 +184,19 @@ pub(super) fn special_role(word: &str) -> Option<&'static str> {
     let upper = word.to_ascii_uppercase();
     SPECIAL_ROLES.iter().copied().find(|s| *s == upper)
 }
+
+/// An entry of `publish` of a publication.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PublishOp {
+    Insert,
+    Update,
+    Delete,
+    Truncate,
+}
+
+keyword!(PublishOp, "INSERT, UPDATE, DELETE or TRUNCATE", {
+    "INSERT" => PublishOp::Insert,
+    "UPDATE" => PublishOp::Update,
+    "DELETE" => PublishOp::Delete,
+    "TRUNCATE" => PublishOp::Truncate,
+});

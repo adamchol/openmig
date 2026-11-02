@@ -350,6 +350,30 @@ the same `name`.
 strings, e.g. `["CREATE TABLE"]`), `execute` (function ref), `enabled` (bool or `ORIGIN`,
 `REPLICA`, `ALWAYS`, `DISABLED`; default true), `comment`.
 
+### `publication "name"`
+
+```hcl
+publication "app_cdc" {
+  tables  = [table.app.sessions]           # FOR TABLE, every column and row
+  schemas = [schema.events]                # FOR TABLES IN SCHEMA (PostgreSQL 15+)
+  publish = [INSERT, UPDATE, DELETE]       # default: all four, with TRUNCATE
+  publish_via_partition_root = false
+  comment = "read by the CDC reader"
+
+  table "app.grants" {                     # a table with a column list or row filter (15+)
+    columns = ["subject", "session_id"]
+    where   = "subject <> 'system'"
+  }
+}
+```
+
+Tables and schemas are changed with `ALTER PUBLICATION ... ADD/DROP`; a table whose column list or
+row filter changes is dropped from the publication and added again. `publish` and
+`publish_via_partition_root` are changed with `ALTER PUBLICATION ... SET`. PostgreSQL does not
+allow column lists in a publication that also publishes schemas. `FOR ALL TABLES` cannot be
+declared. A publication is owned (`config.md`) only when it is declared and publishes nothing
+outside `schemas`; others are never touched.
+
 ### `enum "schema.name"`
 
 `values` (list of strings, required), `comment`. New values are added with `ALTER TYPE ... ADD VALUE`

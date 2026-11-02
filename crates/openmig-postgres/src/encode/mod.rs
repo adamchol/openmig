@@ -47,6 +47,12 @@ pub fn encode(
             encoder.event_trigger(trigger),
         ));
     }
+    for publication in model.publications.values() {
+        sections.push((
+            Section::cluster(Kind::Publication),
+            encoder.publication(publication),
+        ));
+    }
     files(sections, options.split)
 }
 
@@ -67,6 +73,7 @@ enum Kind {
     Procedure,
     Trigger,
     EventTrigger,
+    Publication,
     Grant,
     Data,
 }
@@ -89,6 +96,7 @@ impl Kind {
             Kind::Procedure => "procedures.hcl",
             Kind::Trigger => "triggers.hcl",
             Kind::EventTrigger => "event_triggers.hcl",
+            Kind::Publication => "publications.hcl",
             Kind::Grant => "grants.hcl",
             Kind::Data => "data.hcl",
         }

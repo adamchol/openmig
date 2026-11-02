@@ -1,6 +1,7 @@
 use super::{Catalog, SystemCatalog, code};
 use crate::model::{
-    Database, EventTrigger, Extension, Membership, QualifiedName, Role, TriggerEnabled,
+    Database, EventTrigger, Extension, Membership, Publication, PublishedTable, QualifiedName,
+    Role, TriggerEnabled,
 };
 use openmig_core::{ObjectKind, ObjectRef, Scope};
 use std::collections::BTreeMap;
@@ -113,5 +114,42 @@ pub(super) fn roles(db: &mut Database, roles: &[Row], memberships: &[Row]) {
                 inherit,
                 set,
             });
+    }
+}
+
+pub(super) fn publications(db: &mut Database, publications: &[Row], tables: &[Row]) {
+    for row in publications {
+        let name: String = row.get("name");
+        db.publications.insert(
+            name.clone(),
+            Publication {
+                name,
+                all_tables: row.get("all_tables"),
+                tables: BTreeMap::new(),
+                schemas: row.get("schemas"),
+                insert: row.get("ins"),
+                update: row.get("upd"),
+                delete: row.get("del"),
+                truncate: row.get("trunc"),
+                via_partition_root: row.get("via_root"),
+                comment: row.get("comment"),
+                owner: row.get("owner"),
+            },
+        );
+    }
+    for row in tables {
+        let name: String = row.get("publication");
+        if let Some(p) = db.publications.get_mut(&name) {
+            p.tables.insert(
+                QualifiedName::new(
+                    row.get::<_, String>("schema"),
+                    row.get::<_, String>("table"),
+                ),
+                PublishedTable {
+                    columns: row.get("columns"),
+                    filter: row.get("filter"),
+                },
+            );
+        }
     }
 }

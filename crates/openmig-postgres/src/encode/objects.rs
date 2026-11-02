@@ -7,8 +7,8 @@ use crate::decode::routine::{default_cost, default_rows, implied_return};
 use crate::decode::types::TypeContext;
 use crate::model::{
     ArgMode, Composite, Domain, Enum, EventTrigger, Extension, Function, MaterializedView,
-    Membership, Parallel, QualifiedName, Returns, Role, Schema, Sequence, SequenceOptions,
-    TableData, View, ViewCheckOption, ViewColumn, Volatility,
+    Membership, Parallel, Publication, QualifiedName, Returns, Role, Schema, Sequence,
+    SequenceOptions, TableData, View, ViewCheckOption, ViewColumn, Volatility,
 };
 use openmig_hcl::write::{WBlock, WExpr};
 
@@ -403,6 +403,57 @@ impl Encoder<'_> {
         }
         if let Some(c) = &e.comment {
             b.push_attr("comment", WExpr::String(c.clone()));
+        }
+        b
+    }
+
+    pub(super) fn publication(&self, p: &Publication) -> WBlock {
+        let mut b = WBlock::new("publication", vec![p.name.clone()]);
+        let plain: Vec<WExpr> = p
+            .tables
+            .iter()
+            .filter(|(_, t)| t.columns.is_empty() && t.filter.is_none())
+            .map(|(name, _)| self.table_expr(&name.schema, &name.name))
+            .collect();
+        if !plain.is_empty() {
+            b.push_attr("tables", WExpr::List(plain));
+        }
+        if !p.schemas.is_empty() {
+            b.push_attr(
+                "schemas",
+                WExpr::List(p.schemas.iter().map(|s| self.schema_expr(s)).collect()),
+            );
+        }
+        let default = Publication::new("");
+        if p.operations() != default.operations() {
+            let ops = p
+                .operations()
+                .into_iter()
+                .map(|op| word(&op.to_ascii_uppercase()))
+                .collect();
+            b.push_attr("publish", WExpr::List(ops));
+        }
+        if p.via_partition_root {
+            b.push_attr("publish_via_partition_root", WExpr::Bool(true));
+        }
+        if let Some(c) = &p.comment {
+            b.push_attr("comment", WExpr::String(c.clone()));
+        }
+        for (name, t) in &p.tables {
+            if t.columns.is_empty() && t.filter.is_none() {
+                continue;
+            }
+            let mut child = WBlock::new(
+                "table",
+                vec![self.parts(&name.schema, &name.name).join(".")],
+            );
+            if !t.columns.is_empty() {
+                child.push_attr("columns", strings(&t.columns));
+            }
+            if let Some(filter) = &t.filter {
+                child.push_attr("where", WExpr::String(filter.clone()));
+            }
+            b.push_block(child);
         }
         b
     }

@@ -1,7 +1,9 @@
-//! Schemas, extensions, roles and event triggers.
+//! Schemas, extensions, roles, event triggers and publications.
 
-use super::{ident, literal};
-use crate::model::{EventTrigger, Membership, Role, TriggerEnabled};
+use super::{ident, literal, qualified};
+use crate::model::{
+    EventTrigger, Membership, Publication, PublishedTable, QualifiedName, Role, TriggerEnabled,
+};
 
 pub(crate) fn create_schema(name: &str) -> String {
     format!("CREATE SCHEMA {}", ident(name))
@@ -177,6 +179,106 @@ pub(crate) fn event_trigger_enabled(name: &str, enabled: TriggerEnabled) -> Stri
 
 pub(crate) fn drop_event_trigger(name: &str) -> String {
     format!("DROP EVENT TRIGGER {}", ident(name))
+}
+
+fn published_table(name: &QualifiedName, t: &PublishedTable) -> String {
+    let mut sql = format!("TABLE {}", qualified(&name.schema, &name.name));
+    if !t.columns.is_empty() {
+        let columns: Vec<String> = t.columns.iter().map(|c| ident(c)).collect();
+        sql.push_str(&format!(" ({})", columns.join(", ")));
+    }
+    if let Some(filter) = &t.filter {
+        sql.push_str(&format!(" WHERE ({filter})"));
+    }
+    sql
+}
+
+fn tables_in_schema(schema: &str) -> String {
+    format!("TABLES IN SCHEMA {}", ident(schema))
+}
+
+/// `WITH (...)` options that differ from PostgreSQL's defaults (`None` when none do).
+fn publication_options(p: &Publication, all: bool) -> Option<String> {
+    let default = Publication::new("");
+    let mut out = Vec::new();
+    if all || p.operations() != default.operations() {
+        out.push(format!("publish = {}", literal(&p.operations().join(", "))));
+    }
+    if all || p.via_partition_root {
+        out.push(format!(
+            "publish_via_partition_root = {}",
+            p.via_partition_root
+        ));
+    }
+    (!out.is_empty()).then(|| out.join(", "))
+}
+
+pub(crate) fn create_publication(p: &Publication) -> String {
+    let mut sql = format!("CREATE PUBLICATION {}", ident(&p.name));
+    let objects: Vec<String> = p
+        .tables
+        .iter()
+        .map(|(name, t)| published_table(name, t))
+        .chain(p.schemas.iter().map(|s| tables_in_schema(s)))
+        .collect();
+    if !objects.is_empty() {
+        sql.push_str(&format!(" FOR {}", objects.join(", ")));
+    }
+    if let Some(options) = publication_options(p, false) {
+        sql.push_str(&format!(" WITH ({options})"));
+    }
+    sql
+}
+
+/// The statements that turn the tables and schemas of `current` into those of `desired`. A table
+/// whose column list or row filter changes is dropped from the publication and added again.
+pub(crate) fn alter_publication_tables(
+    current: &Publication,
+    desired: &Publication,
+) -> Vec<String> {
+    let alter = format!("ALTER PUBLICATION {}", ident(&desired.name));
+    let mut drop = Vec::new();
+    let mut add = Vec::new();
+    for (name, t) in &current.tables {
+        if desired.tables.get(name) != Some(t) {
+            drop.push(format!("TABLE {}", qualified(&name.schema, &name.name)));
+        }
+    }
+    for (name, t) in &desired.tables {
+        if current.tables.get(name) != Some(t) {
+            add.push(published_table(name, t));
+        }
+    }
+    for s in &current.schemas {
+        if !desired.schemas.contains(s) {
+            drop.push(tables_in_schema(s));
+        }
+    }
+    for s in &desired.schemas {
+        if !current.schemas.contains(s) {
+            add.push(tables_in_schema(s));
+        }
+    }
+    let mut out = Vec::new();
+    if !drop.is_empty() {
+        out.push(format!("{alter} DROP {}", drop.join(", ")));
+    }
+    if !add.is_empty() {
+        out.push(format!("{alter} ADD {}", add.join(", ")));
+    }
+    out
+}
+
+pub(crate) fn alter_publication_options(p: &Publication) -> String {
+    format!(
+        "ALTER PUBLICATION {} SET ({})",
+        ident(&p.name),
+        publication_options(p, true).unwrap_or_default()
+    )
+}
+
+pub(crate) fn drop_publication(name: &str) -> String {
+    format!("DROP PUBLICATION {}", ident(name))
 }
 
 #[cfg(test)]

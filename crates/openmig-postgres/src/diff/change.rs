@@ -56,6 +56,11 @@ pub enum AlterOp {
     /// `ALTER EXTENSION ... SET SCHEMA`.
     ExtensionSchema,
 
+    /// Tables and schemas of a publication.
+    PublicationTables,
+    /// `publish` and `publish_via_partition_root` of a publication.
+    PublicationOptions,
+
     /// `ENABLE` / `DISABLE ROW LEVEL SECURITY`.
     RowSecurity,
     /// `FORCE` / `NO FORCE ROW LEVEL SECURITY`.
@@ -128,6 +133,8 @@ impl AlterOp {
             AlterOp::GrantMembership(r) => format!("grant membership in {r}"),
             AlterOp::RevokeMembership(r) => format!("revoke membership in {r}"),
             AlterOp::ExtensionSchema => "schema".into(),
+            AlterOp::PublicationTables => "tables".into(),
+            AlterOp::PublicationOptions => "options".into(),
             AlterOp::RowSecurity => "row level security".into(),
             AlterOp::ForceRowSecurity => "force row level security".into(),
             AlterOp::ReplicaIdentity => "replica identity".into(),

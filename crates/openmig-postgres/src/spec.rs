@@ -23,6 +23,8 @@ const TABLE: &[BlockSpec] = &[
 
 const VIEW: &[BlockSpec] = &[BlockSpec::new("column", LabelSpec::One)];
 
+const PUBLICATION: &[BlockSpec] = &[BlockSpec::new("table", LabelSpec::One)];
+
 const MATERIALIZED_VIEW: &[BlockSpec] = &[BlockSpec::new("column", LabelSpec::One), INDEX];
 
 const RETURNS_TABLE: &[BlockSpec] = &[BlockSpec::new("column", LabelSpec::One)];
@@ -59,6 +61,7 @@ const BLOCKS: &[BlockSpec] = &[
     BlockSpec::new("trigger", LabelSpec::One),
     BlockSpec::new("policy", LabelSpec::One),
     BlockSpec::new("event_trigger", LabelSpec::One),
+    BlockSpec::new("publication", LabelSpec::One).nested(PUBLICATION),
     BlockSpec::new("enum", LabelSpec::Qualified).referenceable(),
     BlockSpec::new("composite", LabelSpec::Qualified)
         .referenceable()

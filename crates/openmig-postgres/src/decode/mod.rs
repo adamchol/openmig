@@ -16,6 +16,7 @@ mod data;
 mod keywords;
 pub(crate) mod names;
 pub(crate) mod objects;
+mod publication;
 pub(crate) mod routine;
 pub(crate) mod table;
 pub(crate) mod types;
@@ -178,6 +179,7 @@ impl<'a> Decoder<'a> {
             match block.kind.as_str() {
                 "trigger" => self.top_level_trigger(block),
                 "policy" => self.top_level_policy(block),
+                "publication" => self.publication(block),
                 _ => {}
             }
         }

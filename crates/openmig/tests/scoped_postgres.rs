@@ -210,7 +210,8 @@ fn app_cdc(publication_body: &str) -> String {
 
 fn assert_untouched(plan: &str) {
     for foreign in [
-        "public",
+        "\"public\"",
+        "public.",
         "billing",
         "their_",
         "customers",
