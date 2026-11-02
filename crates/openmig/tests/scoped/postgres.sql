@@ -1,0 +1,14 @@
+create role their_reader;
+create role cdc_reader;
+create table public.customers (id int primary key, name text);
+grant select on public.customers to their_reader;
+comment on schema public is 'their comment';
+revoke all on schema public from public;
+create schema billing;
+create table billing.invoices (id int primary key);
+create function public.f() returns int language sql as 'select 1';
+create extension pgcrypto;
+create function public.evt() returns event_trigger language plpgsql as 'begin end';
+create event trigger their_evt on ddl_command_end execute function public.evt();
+create publication their_pub for table public.customers;
+alter default privileges grant select on tables to their_reader;
