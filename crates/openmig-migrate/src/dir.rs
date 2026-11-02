@@ -345,5 +345,80 @@ pub fn render_file(plan: &Plan, generated: bool) -> String {
     out
 }
 
+/// The migration files and `openmig.sum` of a directory as they were, to put back when a command
+/// that changes them fails halfway (`generate` whose migration does not verify).
+#[derive(Debug)]
+pub struct DirSnapshot {
+    path: PathBuf,
+    existed: bool,
+    files: BTreeMap<String, Vec<u8>>,
+}
+
+impl DirSnapshot {
+    pub fn take(path: &Path) -> Result<Self, Error> {
+        let mut files = BTreeMap::new();
+        let entries = match std::fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self {
+                    path: path.to_path_buf(),
+                    existed: false,
+                    files,
+                });
+            }
+            Err(e) => return Err(Error::io(format!("cannot read {}", path.display()), e)),
+        };
+        for entry in entries {
+            let entry =
+                entry.map_err(|e| Error::io(format!("cannot read {}", path.display()), e))?;
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if is_snapshotted(&name) && entry.path().is_file() {
+                let content = std::fs::read(entry.path())
+                    .map_err(|e| Error::io(format!("cannot read {}", entry.path().display()), e))?;
+                files.insert(name, content);
+            }
+        }
+        Ok(Self {
+            path: path.to_path_buf(),
+            existed: true,
+            files,
+        })
+    }
+
+    /// Put every snapshotted file back and remove the ones created since.
+    pub fn restore(&self) -> Result<(), Error> {
+        let io = |what: &str, p: &Path, e| Error::io(format!("cannot {what} {}", p.display()), e);
+        if let Ok(entries) = std::fs::read_dir(&self.path) {
+            for entry in entries.flatten() {
+                let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                    continue;
+                };
+                if is_snapshotted(&name) && !self.files.contains_key(&name) {
+                    std::fs::remove_file(entry.path())
+                        .map_err(|e| io("remove", &entry.path(), e))?;
+                }
+            }
+        }
+        if !self.existed {
+            // Only removes the directory when nothing else was put into it.
+            let _ = std::fs::remove_dir(&self.path);
+            return Ok(());
+        }
+        for (name, content) in &self.files {
+            let path = self.path.join(name);
+            if std::fs::read(&path).ok().as_deref() != Some(content.as_slice()) {
+                std::fs::write(&path, content).map_err(|e| io("write", &path, e))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_snapshotted(name: &str) -> bool {
+    name.ends_with(".sql") || name == SUM_FILE_NAME
+}
+
 #[cfg(test)]
 mod tests;

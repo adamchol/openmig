@@ -454,3 +454,47 @@ fn corpus_directories_load() {
     }
     assert!(loaded > 0, "no migration directories found");
 }
+
+#[test]
+fn snapshot_restores_files_and_sum() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("migrations");
+    let mut dir = MigrationDir::load(&path).unwrap();
+    dir.add("20260101000000", "init", "CREATE TABLE a ();\n")
+        .unwrap();
+    std::fs::write(path.join("notes.txt"), "kept").unwrap();
+    let before: Vec<_> = list(&path);
+
+    let snapshot = DirSnapshot::take(&path).unwrap();
+    dir.remove("20260101000000_init.sql").unwrap();
+    dir.add("20260102000000", "next", "CREATE TABLE b ();\n")
+        .unwrap();
+    assert_ne!(list(&path), before);
+    snapshot.restore().unwrap();
+    assert_eq!(list(&path), before);
+    MigrationDir::load(&path).unwrap().verify_sum().unwrap();
+
+    let fresh = tmp.path().join("fresh");
+    let snapshot = DirSnapshot::take(&fresh).unwrap();
+    MigrationDir::load(&fresh)
+        .unwrap()
+        .add("20260101000000", "init", "SELECT 1;\n")
+        .unwrap();
+    snapshot.restore().unwrap();
+    assert!(!fresh.exists());
+}
+
+fn list(path: &Path) -> Vec<(String, String)> {
+    let mut files: Vec<_> = std::fs::read_dir(path)
+        .unwrap()
+        .flatten()
+        .map(|e| {
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read_to_string(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    files.sort();
+    files
+}

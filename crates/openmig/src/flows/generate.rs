@@ -7,7 +7,7 @@ use crate::cli::GenerateArgs;
 use crate::context::Context;
 use crate::ui::Ui;
 use openmig_core::{Engine, Error, PlanMode, RenameSet, Session};
-use openmig_migrate::{MigrationDir, MigrationFile, render_file};
+use openmig_migrate::{DirSnapshot, MigrationDir, MigrationFile, render_file};
 use std::path::Path;
 
 pub async fn generate<E: Engine>(
@@ -16,11 +16,29 @@ pub async fn generate<E: Engine>(
     ui: &dyn Ui,
 ) -> Result<u8, Error> {
     let dir_path = ctx.migrations_dir()?.clone();
+    // A migration that fails its own verification (or a failure after `--base` removed files)
+    // must not leave the directory changed.
+    let snapshot = DirSnapshot::take(&dir_path)?;
+    let result = Box::pin(write_migration(ctx, args, ui, &dir_path)).await;
+    if result.is_err()
+        && let Err(e) = snapshot.restore()
+    {
+        ui.warn(&format!("could not restore {}: {e}", dir_path.display()));
+    }
+    result
+}
+
+async fn write_migration<E: Engine>(
+    ctx: &Context<E>,
+    args: &GenerateArgs,
+    ui: &dyn Ui,
+    dir_path: &Path,
+) -> Result<u8, Error> {
     let removed = match &args.base {
-        Some(base) => remove_unmerged_generated(&dir_path, base)?,
+        Some(base) => remove_unmerged_generated(dir_path, base)?,
         None => Vec::new(),
     };
-    let mut dir = MigrationDir::load(&dir_path)?;
+    let mut dir = MigrationDir::load(dir_path)?;
     dir.verify_sum()
         .map_err(|e| Error::Migrations(e.to_string()))?;
     let desired = load_desired(ctx, ui)?;

@@ -8,7 +8,9 @@ mod directives;
 mod executor;
 mod sum;
 
-pub use dir::{MigrationDir, MigrationFile, NameError, file_name, parse_file_name, render_file};
+pub use dir::{
+    DirSnapshot, MigrationDir, MigrationFile, NameError, file_name, parse_file_name, render_file,
+};
 pub use directives::{Directives, parse_directives};
 pub use executor::{
     DeployOptions, DeployReport, FileOutcome, Progress, Status, StatusEntry, StatusState, deploy,
