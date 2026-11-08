@@ -13,7 +13,9 @@ There are two ways to use it, usually together:
 ## Installing
 
 With Nix: `nix run github:adamchol/openmig -- --help`, or add the flake's `packages.openmig` to your
-dev shell. From source: `cargo install --path crates/openmig`.
+dev shell. CI pushes every build to the `openmig.cachix.org` binary cache; the flake offers it
+(accept once, or run `cachix use openmig`) so nothing is compiled locally. From source:
+`cargo install --path crates/openmig`.
 
 OpenMig needs the database server binaries for the scratch database it uses to normalize schemas
 (see below): `initdb` and `postgres` for PostgreSQL, `clickhouse` for ClickHouse. In a Nix dev shell

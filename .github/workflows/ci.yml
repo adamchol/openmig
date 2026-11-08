@@ -9,9 +9,28 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    runs-on: nixos
+  nix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            packages: .#openmig .#openmig-full .#image
+          - os: ubuntu-24.04-arm
+            packages: .#openmig .#openmig-full .#image
+          - os: macos-latest
+            packages: .#openmig .#openmig-full
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - name: Build flake checks
-        run: nix-fast-build --flake .#checks
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: openmig
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Flake checks
+        run: nix flake check --print-build-logs
+      - name: Packages
+        run: nix build --print-build-logs --no-link ${{ matrix.packages }}
+      - name: Dev shell
+        run: nix develop --command true

@@ -1,6 +1,13 @@
 {
   description = "OpenMig: declarative and versioned schema migrations for PostgreSQL and ClickHouse";
 
+  nixConfig = {
+    extra-substituters = [ "https://openmig.cachix.org" ];
+    extra-trusted-public-keys = [
+      "openmig.cachix.org-1:Aq6s2uCRbfkN/M9U2czjzjjWrOZVopfe1rv5+1cxLpo="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
