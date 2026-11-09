@@ -155,10 +155,17 @@ nested in it. `plan` turns changes into ordered statements:
   get their inserts and updates before, and their deletes after, the referencing tables.
 * Unsupported (error with a hint to write the migration by hand with `openmig new`, or to allow
   recreating with `sync --recreate`): changing a generated column's expression before 17, a plain
-  column becoming generated, an identity column becoming generated, partitioning changes,
+  column becoming generated, an identity column becoming generated, a column type change without
+  a cast between the types (`uuid` to `integer`; see below), partitioning changes,
   removing or reordering enum values, and the composite and domain changes above while table
   columns use the type. With `allow_recreate` the column, table or type is dropped and created
   again (destructive).
+* A column type change is castable when the types are equal without modifiers (after
+  resolving domains), either side is a string type (`text`, `varchar`, `char`, `name`: I/O
+  conversion), both are arrays of castable element types, or `pg_cast` has the pair; the built-in
+  pairs are a table in `openmig-postgres` (`casts.rs`, checked against each server version in
+  tests). Enums and composite types cast only to and from strings. Types the model cannot see
+  (extension types, ranges, user-defined casts) are assumed castable.
 * Owners are not managed; owner differences are ignored.
 
 #### Steps and ordering

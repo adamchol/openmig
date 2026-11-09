@@ -2,6 +2,7 @@
 //! administrative URL, e.g. `postgresql:///postgres?host=/tmp/pg&port=5432&user=openmig`), or else
 //! a scratch server from the testkit pool.
 
+mod casts;
 mod common;
 mod corpus;
 mod corpus_replay;

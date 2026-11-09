@@ -1,6 +1,7 @@
 //! Tables and everything nested in them.
 
 use super::{AlterOp, Differ, merge};
+use crate::casts::castable;
 use crate::model::{Column, Database, GeneratedKind, Policy, Schema, Table, Trigger};
 use openmig_core::{ObjectKind, ObjectRef};
 use std::collections::{BTreeMap, BTreeSet};
@@ -147,6 +148,22 @@ impl Differ<'_> {
             ops.push(AlterOp::Identity);
         }
         if cur.data_type != des.data_type || cur.collation != des.collation {
+            if !castable(
+                self.cur,
+                self.des,
+                self.opts.major,
+                &cur.data_type,
+                &des.data_type,
+            ) {
+                self.unsupported(
+                    r,
+                    format!(
+                        "PostgreSQL cannot cast {} to {}",
+                        cur.data_type, des.data_type
+                    ),
+                );
+                return;
+            }
             ops.push(AlterOp::Type);
         }
         if cur.not_null != des.not_null {

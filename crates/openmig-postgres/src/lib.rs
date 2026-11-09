@@ -5,6 +5,7 @@
 //! * [`diff`]: changes between two models; [`plan`]: ordered SQL for those changes.
 //! * [`PostgresEngine`]: the [`Engine`] implementation.
 
+pub mod casts;
 mod conn;
 pub mod decode;
 pub mod diff;

@@ -5,7 +5,8 @@
 //! * `expected.sql`: the plan from `before` to `after` (written when missing or with
 //!   `OPENMIG_BLESS=1`),
 //! * `case.toml` (optional): `[settings]` engine settings, `manage_roles`, `reverse = false`,
-//!   `roundtrip = false`, `error = "unsupported"` (the forward plan must fail with that error kind).
+//!   `roundtrip = false`, `recreate = true` (plan as `sync --recreate`), `error = "unsupported"`
+//!   (the forward plan must fail with that error kind).
 //!
 //! Each case checks, against real servers:
 //! 1. the target converges to `before` (applying `empty -> before`, then re-planning is empty);
@@ -52,6 +53,7 @@ pub struct Case {
 struct CaseOptions {
     settings: toml::Table,
     manage_roles: bool,
+    recreate: bool,
     reverse: Option<bool>,
     roundtrip: Option<bool>,
     error: Option<String>,
@@ -192,7 +194,7 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
         &after_model,
         &renames,
         PlanMode::Generate,
-        false,
+        options.recreate,
     );
     if let Some(expected) = &options.error {
         return match forward {
@@ -242,7 +244,7 @@ pub async fn run_case<E: Engine>(kind: Kind, case: &Case) -> Result<(), String> 
             &before_model,
             &RenameSet::default(),
             PlanMode::Generate,
-            false,
+            options.recreate,
         )
         .map_err(|e| format!("plan after -> before: {e}"))?;
         apply_plan::<E>(&mut target, &back)
