@@ -411,15 +411,15 @@ Model {
         },
         "gateway": Role {
             name: "gateway",
-            storage: "local_directory",
+            storage: "",
         },
         "ingest": Role {
             name: "ingest",
-            storage: "local_directory",
+            storage: "",
         },
         "reader": Role {
             name: "reader",
-            storage: "local_directory",
+            storage: "",
         },
     },
     grants: [
@@ -534,7 +534,7 @@ Model {
                     "reader",
                 ],
             },
-            storage: "local_directory",
+            storage: "",
         },
     },
     dependencies: [

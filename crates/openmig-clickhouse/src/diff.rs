@@ -515,7 +515,11 @@ fn roles(
                 role: role.clone(),
                 recreate: false,
             }),
-            Some(want) if !want.storage.is_empty() && want.storage != role.storage => {
+            Some(want)
+                if !want.storage.is_empty()
+                    && !role.storage.is_empty()
+                    && want.storage != role.storage =>
+            {
                 if !ctx.allow_recreate {
                     return Err(unsupported(
                         ObjectRef::new(ObjectKind::Role, [name.as_str()]),
@@ -1015,10 +1019,12 @@ fn row_policies(current: &Model, desired: &Model, changes: &mut Vec<Change>) {
     for (id, policy) in &desired.row_policies {
         let same = |old: &RowPolicy| {
             let mut old = old.clone();
-            if policy.storage.is_empty() {
+            let mut new = policy.clone();
+            if policy.storage.is_empty() || old.storage.is_empty() {
                 old.storage.clear();
+                new.storage.clear();
             }
-            &old == policy
+            old == new
         };
         match current.row_policies.get(id) {
             None => changes.push(Change::CreateRowPolicy {

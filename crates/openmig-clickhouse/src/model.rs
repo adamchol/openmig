@@ -156,6 +156,20 @@ pub struct Dependency {
 }
 
 impl Model {
+    /// Forget the user directory of access entities stored in `default`.
+    pub fn clear_default_storage(&mut self, default: &str) {
+        let clear = |s: &mut String| {
+            if s == default {
+                s.clear();
+            }
+        };
+        self.roles.values_mut().for_each(|r| clear(&mut r.storage));
+        self.users.values_mut().for_each(|u| clear(&mut u.storage));
+        self.row_policies
+            .values_mut()
+            .for_each(|p| clear(&mut p.storage));
+    }
+
     /// True when the model contains no managed objects. An empty `default` database is ignored
     /// because every server has one.
     pub fn is_empty(&self) -> bool {

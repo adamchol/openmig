@@ -83,10 +83,23 @@ impl Engine for ClickHouseEngine {
         roles.chain(users).chain(functions).collect()
     }
 
+    /// Scratch servers put access entities in their own default user directory; only a declared
+    /// `storage` names one, so the target server picks its default otherwise.
     fn complete_normalized(normalized: &mut Model, decoded: &Model) {
         for (name, user) in &mut normalized.users {
             if let Some(declared) = decoded.users.get(name) {
                 user.auth = declared.auth.clone();
+                user.storage = declared.storage.clone();
+            }
+        }
+        for (name, role) in &mut normalized.roles {
+            if let Some(declared) = decoded.roles.get(name) {
+                role.storage = declared.storage.clone();
+            }
+        }
+        for (id, policy) in &mut normalized.row_policies {
+            if let Some(declared) = decoded.row_policies.get(id) {
+                policy.storage = declared.storage.clone();
             }
         }
     }

@@ -223,7 +223,8 @@ fn check_model(model: &Model) {
     );
     assert_eq!(model.role_grants.len(), 1);
     assert_eq!(model.roles["admin"].storage, "replicated");
-    assert_eq!(model.roles["reader"].storage, "local_directory");
+    // A scratch session reports its default user directory as unspecified.
+    assert_eq!(model.roles["reader"].storage, "");
 
     let has = |from: (ObjectKind, &[&str]), to: (ObjectKind, &[&str])| {
         model.dependencies.iter().any(|d| {

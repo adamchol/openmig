@@ -11,6 +11,9 @@ use serde::Deserialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// The first SQL-managed user directory of scratch servers (`openmig-scratch`).
+const SCRATCH_DEFAULT_STORAGE: &str = "local_directory";
+
 /// Oldest server version OpenMig supports.
 pub const MIN_SERVER_VERSION: (u32, u32) = (24, 8);
 
@@ -152,7 +155,14 @@ impl Session<ClickHouseEngine> for ChSession {
     }
 
     async fn inspect(&mut self, scope: &Scope) -> Result<crate::model::Model, Error> {
-        inspect::inspect(self, scope).await
+        let mut model = inspect::inspect(self, scope).await?;
+        if self.purpose == SessionPurpose::Scratch {
+            // Scratch servers store access entities in their default `local_directory` unless a
+            // statement names another; the target's default may differ (`replicated` on
+            // ClickHouse Cloud), so it is reported as unspecified.
+            model.clear_default_storage(SCRATCH_DEFAULT_STORAGE);
+        }
+        Ok(model)
     }
 
     async fn execute(&mut self, sql: &str) -> Result<(), ExecError> {

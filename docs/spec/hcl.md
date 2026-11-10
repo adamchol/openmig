@@ -562,7 +562,7 @@ FUNCTION name AS (args) -> body`.
 
 | Attribute | Type | Notes |
 |---|---|---|
-| `storage` | identifier or string | User directory storing the role: `local_directory`, `replicated`. The server's default when absent. Changing it is unsupported (`sync --recreate` drops and recreates the role). |
+| `storage` | identifier or string | User directory storing the role: `local_directory`, `replicated`. When absent, statements name no directory (the target server's default is used) and the directory is never compared. Changing a declared one is unsupported (`sync --recreate` drops and recreates the role). |
 | `member_of` | list of role refs or names, or `{ role = ..., admin = bool }` | Role memberships (`GRANT role TO this_role [WITH ADMIN OPTION]`). |
 
 ClickHouse roles have no comments.
@@ -606,7 +606,7 @@ name without declaring them are created in scratch servers only.
 ### `row_policy "name"` (P1)
 
 `on` (table ref or `"database.table"`, required), `using` (SQL condition), `as` (`PERMISSIVE`
-(default) or `RESTRICTIVE`), `to` (role refs/names, or `[ALL]`), `except` (roles, with `ALL`).
+(default) or `RESTRICTIVE`), `to` (role refs/names, or `[ALL]`), `except` (roles, with `ALL`), `storage` (as for roles).
 
 ### `data`
 
